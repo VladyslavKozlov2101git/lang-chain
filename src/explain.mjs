@@ -43,7 +43,26 @@ const textOf = (reply) => {
   return String(content ?? "");
 };
 
-const fallback = (doc, issues, accepted) =>
+/**
+ * Суми завжди підписані, і їх дві.
+ *
+ * Голий «підсумок документа» — це той дефект, через який постачальник у листі про
+ * часткове приймання читав суму, якої ніхто не приймав. Сума за документом ще й
+ * буває з ПДВ, а прийнята завжди без, тому ставити їх поруч без підписів не можна.
+ */
+function sums(doc, acceptedTotalKop) {
+  const out = [];
+  if (doc?.totalKop != null) {
+    const vat = doc.pricesIncludeVat ? "з ПДВ" : "без ПДВ";
+    out.push(`Сума за документом постачальника: ${formatUah(doc.totalKop)} грн ${vat}.`);
+  }
+  if (acceptedTotalKop != null) {
+    out.push(`Прийнято на суму: ${formatUah(acceptedTotalKop)} грн без ПДВ.`);
+  }
+  return out;
+}
+
+const fallback = (doc, issues, accepted, acceptedTotalKop) =>
   [
     `Акт розбіжностей до накладної ${doc?.docNumber ?? "без номера"} від ${doc?.docDate ?? "—"}.`,
     "",
@@ -52,15 +71,23 @@ const fallback = (doc, issues, accepted) =>
     accepted.length
       ? `Прийнято рядків: ${accepted.map((i) => i + 1).join(", ")}.`
       : "Приймання не відбулося.",
+    ...sums(doc, acceptedTotalKop),
   ].join("\n");
 
 /**
- * @param accepted індекси схвалених рядків (0-based)
+ * @param accepted          індекси схвалених рядків (0-based)
+ * @param acceptedTotalKop  сума проведеної накладної без ПДВ, або null
  * @returns текст українською; ніколи не кидає
  */
-export async function explainIssues({ model, doc, issues, accepted = [], supplierName }) {
+export async function explainIssues({
+  model,
+  doc,
+  issues,
+  accepted = [],
+  acceptedTotalKop = null,
+  supplierName,
+}) {
   const table = issueLines(doc, issues).join("\n");
-  const total = doc?.totalKop != null ? `Підсумок документа: ${formatUah(doc.totalKop)} грн.` : "";
   const prompt = `Напиши короткий лист постачальнику${supplierName ? ` (${supplierName})` : ""} про розбіжності
 при прийманні накладної ${doc?.docNumber ?? ""} від ${doc?.docDate ?? ""}.
 
@@ -68,17 +95,18 @@ export async function explainIssues({ model, doc, issues, accepted = [], supplie
 ${table}
 
 ${accepted.length ? `Прийнято рядків: ${accepted.map((i) => i + 1).join(", ")}.` : "Приймання не відбулося."}
-${total}
+${sums(doc, acceptedTotalKop).join("\n")}
 
 Вимоги: українською, ділово й без води, 4–8 рядків. Перелічи, що саме не зійшлося,
 і попроси надіслати виправлений документ або погодити нову ціну протоколом.
-Нічого не вигадуй поза списком вище.`;
+Нічого не вигадуй поза списком вище. Якщо згадуєш суму — переписуй її разом із
+підписом: сума за документом і прийнята сума це різні числа, і плутати їх не можна.`;
 
   try {
     const message = textOf(await model.invoke(prompt)).trim();
-    return message || fallback(doc, issues, accepted);
+    return message || fallback(doc, issues, accepted, acceptedTotalKop);
   } catch (e) {
     console.error(`[explain] модель недоступна (${e.message}), віддаю детермінований текст`);
-    return fallback(doc, issues, accepted);
+    return fallback(doc, issues, accepted, acceptedTotalKop);
   }
 }

@@ -140,6 +140,67 @@ describe("AC-8 — аляси народжуються з підтверджен
   });
 });
 
+describe("AC-8 — чого аляс НЕ вчить", () => {
+  const aliasCodes = (db) =>
+    db
+      .prepare(
+        `SELECT s.code FROM sku_alias a JOIN sku s ON s.id = a.sku_id ORDER BY s.code`,
+      )
+      .all()
+      .map((r) => r.code);
+
+  test("рядок, відкинутий через ціну, аляс усе одно вчить: збіг людина не заперечила", async () => {
+    const { db } = await setup();
+    const model = new Scripted([docReply(overPriced()), ...picks(), "текст акта"]);
+    const graph = graphOver(db, model);
+    await run(graph, "t-partial");
+    // Прийняті 1 і 2; сметана (3) відкинута через ціну; сир (4) — без причини.
+    await resume(graph, "t-partial", { action: "partial", lines: [0, 1] });
+
+    expect(aliasCodes(db)).toEqual(["MLK-001", "MLK-004", "MLK-006"]);
+  });
+
+  test("рядок, виключений без жодної розбіжності, аляс не вчить: причина невідома", async () => {
+    const { db } = await setup();
+    const model = new Scripted([docReply(overPriced()), ...picks(), "текст акта"]);
+    const graph = graphOver(db, model);
+    await run(graph, "t-silent");
+    await resume(graph, "t-silent", { action: "partial", lines: [0, 1] });
+
+    // MLK-011 — саме той рядок, який людина викинула молча.
+    expect(aliasCodes(db)).not.toContain("MLK-011");
+  });
+
+  test("низька впевненість матчингу не вчить аляса навіть після approve", async () => {
+    const { db } = await setup();
+    const shaky = picks();
+    shaky[0] = JSON.stringify({ code: "MLK-001", confidence: 0.5 });
+    const model = new Scripted([docReply(), ...shaky, "текст акта"]);
+    const graph = graphOver(db, model);
+    const paused = await run(graph, "t-shaky");
+    expect(interruptOf(paused).issues.map((i) => i.code)).toEqual(["no_sku_match"]);
+
+    const out = await resume(graph, "t-shaky", { action: "approve" });
+    expect(out.status).toBe("posted");
+    // Рядок проведено — людина його схвалила; але вчитися на невпевненому збігу
+    // не можна, бо одна галюцинація закріпилась би назавжди.
+    expect(db.prepare("SELECT count(*) n FROM receipt_line").get().n).toBe(4);
+    expect(aliasCodes(db)).toEqual(["MLK-004", "MLK-006", "MLK-011"]);
+  });
+
+  test("у текст акта їде прийнята сума, а не сума за документом", async () => {
+    const { db } = await setup();
+    const model = new Scripted([docReply(overPriced()), ...picks(), "текст акта"]);
+    const graph = graphOver(db, model);
+    await run(graph, "t-sums");
+    await resume(graph, "t-sums", { action: "partial", lines: [0, 1] });
+
+    const prompt = model.prompts.at(-1);
+    expect(prompt).toContain("Сума за документом постачальника: 3793,60 грн без ПДВ.");
+    expect(prompt).toContain("Прийнято на суму: 1356,00 грн без ПДВ.");
+  });
+});
+
 describe("AC-25/AC-26 — ідемпотентність", () => {
   test("AC-25: той самий thread_id двічі не дає другої накладної", async () => {
     const { db } = await setup();

@@ -49,6 +49,49 @@ describe("AC-24 — текст для постачальника", () => {
     expect(message).toContain("Прийнято рядків: 1.");
   });
 
+  describe("дві суми, обидві підписані", () => {
+    // Через голий «підсумок документа» лист про часткове приймання називав суму,
+    // якої ніхто не приймав.
+    test("у промпті вони розрізнені, і сказано їх не плутати", async () => {
+      const model = new Scripted(["текст"]);
+      await explainIssues({ model, doc, issues, accepted: [0], acceptedTotalKop: 93360 });
+      const prompt = model.prompts[0];
+      expect(prompt).toContain("Сума за документом постачальника: 3793,60 грн без ПДВ.");
+      expect(prompt).toContain("Прийнято на суму: 933,60 грн без ПДВ.");
+      expect(prompt).toContain("різні числа");
+    });
+
+    test("у детермінованому запасі — так само", async () => {
+      const message = await explainIssues({
+        model: new Scripted([new Error("502")]),
+        doc,
+        issues,
+        accepted: [0],
+        acceptedTotalKop: 93360,
+      });
+      expect(message).toContain("Сума за документом постачальника: 3793,60 грн без ПДВ.");
+      expect(message).toContain("Прийнято на суму: 933,60 грн без ПДВ.");
+    });
+
+    test("документ із цінами з ПДВ підписаний як з ПДВ", async () => {
+      const model = new Scripted(["текст"]);
+      await explainIssues({
+        model,
+        doc: { ...doc, pricesIncludeVat: true },
+        issues,
+        accepted: [],
+      });
+      expect(model.prompts[0]).toContain("3793,60 грн з ПДВ.");
+    });
+
+    test("нічого не прийнято → про прийняту суму ні слова", async () => {
+      const model = new Scripted(["текст"]);
+      await explainIssues({ model, doc, issues, accepted: [] });
+      expect(model.prompts[0]).toContain("Сума за документом постачальника");
+      expect(model.prompts[0]).not.toContain("Прийнято на суму");
+    });
+  });
+
   test("порожня відповідь моделі — теж запас", async () => {
     const message = await explainIssues({ model: new Scripted(["   "]), doc, issues });
     expect(message).toContain("Акт розбіжностей");

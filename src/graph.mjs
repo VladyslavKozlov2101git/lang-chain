@@ -23,6 +23,7 @@ import {
   enqueueReview,
   loadContext,
   priorOutcome,
+  receiptOf,
   resolveReview,
   writeAct,
 } from "./db.mjs";
@@ -161,28 +162,49 @@ export function buildGraph({ model, db, today, checkpointer }) {
     const lines = [];
     const aliases = [];
 
-    for (const idx of approvedIndexes(state)) {
-      const line = state.doc.lines[idx];
+    const approved = new Set(approvedIndexes(state));
+    const issuesOf = (idx) => (state.issues ?? []).filter((i) => i.lineIdx === idx);
+
+    /**
+     * AC-8: аляс народжується тільки з рішення людини — але не лише з прийнятих
+     * рядків. Якщо рядок відкинули через ціну чи термін, зіставлення в ньому
+     * людина не заперечила, і наступного разу витрачати на нього LLM не треба.
+     *
+     * Два випадки, коли не вчимося: рядок позначений `no_sku_match` (саме збіг і
+     * під питанням), або рядок виключили без жодної розбіжності — тоді причина
+     * невідома, і це міг бути якраз неправильний SKU.
+     */
+    const learnable = (idx) => {
+      const issues = issuesOf(idx);
+      if (issues.some((i) => i.code === "no_sku_match")) return false;
+      if (approved.has(idx)) return true;
+      return issues.some((i) => i.blocking);
+    };
+
+    state.doc.lines.forEach((line, idx) => {
       const match = byLine.get(idx);
       const sku = match?.skuId ? ctx.skuById.get(match.skuId) : null;
-      if (!sku) continue; // без SKU проводити нічого
-      lines.push({
-        skuId: sku.id,
-        rawName: line.rawName,
-        qty: line.qty,
-        priceNetKop: state.doc.pricesIncludeVat
-          ? netOf(line.priceKop, sku.vatRate)
-          : line.priceKop,
-      });
-      // AC-8: аляс народжується тільки з підтвердження людини.
-      if (state.decision && match.via === "llm") {
+      if (!sku) return; // без SKU ні проводити, ні вчити нічого
+
+      if (approved.has(idx)) {
+        lines.push({
+          skuId: sku.id,
+          rawName: line.rawName,
+          qty: line.qty,
+          priceNetKop: state.doc.pricesIncludeVat
+            ? netOf(line.priceKop, sku.vatRate)
+            : line.priceKop,
+        });
+      }
+
+      if (state.decision && match.via === "llm" && learnable(idx)) {
         aliases.push({
           supplierId: ctx.supplier.id,
           normalized: normalizeName(line.rawName),
           skuId: sku.id,
         });
       }
-    }
+    });
 
     const partial = lines.length < state.doc.lines.length;
     try {
@@ -222,6 +244,8 @@ export function buildGraph({ model, db, today, checkpointer }) {
       doc: state.doc,
       issues,
       accepted,
+      // Прийнята сума читається з проведеної накладної, а не рахується вдруге.
+      acceptedTotalKop: state.receiptId ? (receiptOf(db, state.threadId)?.totalNetKop ?? null) : null,
       supplierName: ctx?.supplier?.name,
     });
     const { actId } = writeAct(db, {
