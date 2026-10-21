@@ -18,7 +18,7 @@
 
 ```bash
 npm install
-npm test                 # 119 тестів, офлайн, без API-ключа
+npm test                 # 131 тест, офлайн, без API-ключа
 npm run seed             # магазини, постачальники, 40 SKU, протоколи, заявки
 
 node supply.mjs intake fixtures/inbox/clean-01-molochka.txt   # чистий документ → проведено
