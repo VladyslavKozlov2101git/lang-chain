@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Копія опублікованого артефакта. Там скелет сторінки додає платформа,
+     тут його треба писати самому — без doctype браузер іде в quirks mode. -->
+<title>Шлях накладної</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+  /* Два стовпці — людина і машина — над документом, який змінюється на кожному кроці. */
+  :root {
+    --paper: #eef1f4;
+    --card: #fafbfc;
+    --ink: #161b20;
+    --dim: #5d6a76;
+    --rule: #cfd7de;
+    --stamp: #1f4e79;
+    --warn: #a3312a;
+    --ok: #2d6a4f;
+    --flat: #e4e9ee;
+
+    --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+    --body: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+    --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #12161a;
+      --card: #1a1f25;
+      --ink: #e6ebf0;
+      --dim: #94a3b1;
+      --rule: #2c343c;
+      --stamp: #7cb0dd;
+      --warn: #e2857c;
+      --ok: #7cc39c;
+      --flat: #222930;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #12161a;
+    --card: #1a1f25;
+    --ink: #e6ebf0;
+    --dim: #94a3b1;
+    --rule: #2c343c;
+    --stamp: #7cb0dd;
+    --warn: #e2857c;
+    --ok: #7cc39c;
+    --flat: #222930;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.55;
+  }
+  .wrap {
+    max-width: 1060px;
+    margin: 0 auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 28px 44px;
+  }
+
+  header { border-bottom: 2px solid var(--ink); padding-bottom: 14px; }
+  h1 {
+    font-family: var(--display);
+    font-size: clamp(30px, 6vw, 46px);
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  header p { margin: 8px 0 0; max-width: 62ch; color: var(--dim); }
+  header .meta {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--dim);
+    margin-top: 10px;
+    letter-spacing: 0.02em;
+  }
+
+  .rail {
+    display: flex;
+    gap: 4px;
+    margin: 20px 0 6px;
+    padding: 0;
+    list-style: none;
+    flex-wrap: wrap;
+  }
+  .rail button {
+    font-family: var(--display);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: none;
+    border: 0;
+    border-top: 3px solid var(--rule);
+    padding: 7px 10px 0 0;
+    color: var(--dim);
+    cursor: pointer;
+    min-width: 0;
+    flex: 1 1 86px;
+    text-align: left;
+    transition: border-color .25s, color .25s;
+  }
+  .rail button:hover { color: var(--ink); }
+  .rail button[aria-current="true"] { border-top-color: var(--stamp); color: var(--ink); }
+  .rail button.done { border-top-color: var(--ink); }
+  .rail .n { font-family: var(--mono); font-size: 10.5px; display: block; opacity: .7; }
+
+  .stage { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+  @media (max-width: 760px) { .stage { grid-template-columns: 1fr; } }
+
+  .pane {
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 16px 18px;
+    min-width: 0;
+  }
+  .pane h2 {
+    font-family: var(--display);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin: 0 0 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .pane.hood { border-left: 3px solid var(--stamp); }
+  .pane ul { margin: 0; padding-left: 18px; }
+  .pane li { margin-bottom: 8px; }
+  .pane li:last-child { margin-bottom: 0; }
+  .pane .quiet { color: var(--dim); font-style: italic; }
+
+  .badge {
+    font-family: var(--display);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 2px;
+    background: var(--flat);
+    color: var(--dim);
+    white-space: nowrap;
+  }
+  .badge.llm { background: var(--stamp); color: var(--card); }
+  .badge.code { border: 1px solid var(--rule); }
+  .badge.human { background: var(--ink); color: var(--paper); }
+
+  .step-title {
+    font-family: var(--display);
+    font-size: clamp(19px, 3.4vw, 25px);
+    font-weight: 600;
+    margin: 18px 0 2px;
+    letter-spacing: -0.01em;
+  }
+  .step-note { margin: 0 0 4px; color: var(--dim); max-width: 70ch; }
+
+  .doc {
+    margin-top: 14px;
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 16px 18px;
+    overflow-x: auto;
+  }
+  .doc h2 {
+    font-family: var(--display);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin: 0 0 12px;
+  }
+  .doc pre, .doc .m {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.65;
+    margin: 0;
+    white-space: pre-wrap;
+  }
+  .doc table { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 460px; }
+  .doc th, .doc td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  .doc th {
+    font-family: var(--display);
+    font-size: 10.5px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--dim);
+    font-weight: 600;
+  }
+  .doc td.n, .doc th.n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .doc tr.hit td { background: color-mix(in oklab, var(--warn) 11%, transparent); }
+  .doc .code { font-family: var(--mono); font-size: 12px; color: var(--stamp); }
+  .doc .why { color: var(--warn); font-size: 12.5px; font-family: var(--display); }
+  .doc .good { color: var(--ok); }
+  .doc .lab { color: var(--dim); }
+  .doc .seal {
+    display: inline-block;
+    border: 2px solid var(--ok);
+    color: var(--ok);
+    font-family: var(--display);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 2px;
+    transform: rotate(-1.5deg);
+  }
+  .doc .chip {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 1px 6px;
+    margin-right: 4px;
+    white-space: nowrap;
+  }
+  .doc .chip.on { border-color: var(--stamp); color: var(--stamp); }
+
+  .fade { animation: rise .42s ease-out both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .controls { display: flex; gap: 8px; align-items: center; margin-top: 18px; flex-wrap: wrap; }
+  .controls button {
+    font-family: var(--display);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    padding: 7px 14px;
+    border: 1px solid var(--rule);
+    background: var(--card);
+    color: var(--ink);
+    border-radius: 2px;
+    cursor: pointer;
+  }
+  .controls button:hover { border-color: var(--stamp); }
+  .controls button.play { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .controls .pos { font-family: var(--mono); font-size: 12px; color: var(--dim); margin-left: auto; }
+  :focus-visible { outline: 2px solid var(--stamp); outline-offset: 2px; }
+
+  footer { margin-top: 36px; border-top: 1px solid var(--rule); padding-top: 18px; }
+  footer h2 {
+    font-family: var(--display);
+    font-size: 11.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin: 0 0 12px;
+    font-weight: 700;
+  }
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+  .fact strong {
+    font-family: var(--display);
+    font-size: 25px;
+    font-weight: 700;
+    display: block;
+    letter-spacing: -0.01em;
+  }
+  .fact span { color: var(--dim); font-size: 13.5px; }
+  footer p { color: var(--dim); font-size: 14px; max-width: 72ch; margin: 18px 0 0; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fade { animation: none; }
+    .rail button { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Шлях накладної</h1>
+    <p>Постачальник надіслав лист. Далі вісім кроків: що з них бачить товарознавець і що
+      насправді відбувається під капотом.</p>
+    <p class="meta">мережа з 3 магазинів · 40 SKU · накладна РН-5540 від 21.10.2026 · ТОВ «Молочний Дім»</p>
+  </header>
+
+  <ul class="rail" id="rail"></ul>
+
+  <h2 class="step-title" id="title">—</h2>
+  <p class="step-note" id="note"></p>
+
+  <div class="stage">
+    <div class="pane">
+      <h2>Що бачить людина</h2>
+      <ul id="sees"></ul>
+    </div>
+    <div class="pane hood">
+      <h2><span>Що під капотом</span><span class="badge" id="who"></span></h2>
+      <ul id="hood"></ul>
+    </div>
+  </div>
+
+  <div class="doc" id="doc"></div>
+
+  <div class="controls">
+    <button class="play" id="play">Пауза</button>
+    <button id="prev">Назад</button>
+    <button id="next">Далі</button>
+    <span class="pos" id="pos"></span>
+  </div>
+
+  <footer>
+    <h2>Замір на 60 прогонах, deepseek-v4.1-flash</h2>
+    <div class="facts">
+      <div class="fact"><strong>215/215</strong><span>рішень матчингу правильні, аляси вимкнені</span></div>
+      <div class="fact"><strong>0</strong><span>тихих помилок: не той SKU при впевненості ≥ 0,8</span></div>
+      <div class="fact"><strong>0 із 60</strong><span>разів знадобився ретрай витягу</span></div>
+      <div class="fact"><strong>8–15 с</strong><span>на документ, 1 + N викликів моделі</span></div>
+    </div>
+    <p>Чого це не доводить: усі 12 тестових листів написані в одному стилі, тому замір
+      показав стабільність моделі на фіксованому вході, а не різноманіття входу. У реальній
+      пошті ламає саме друге — скорочення в назвах, «за домовленістю» замість ціни, два
+      документи в одному листі.</p>
+  </footer>
+</div>
+
+<script>
+const LETTER = `Від: ТОВ «Молочний Дім» <sales@molochnyi-dim.ua>
+Тема: Накладна РН-5540, Лукʼянівка
+
+Доброго дня!
+
+По заявці PO-2026-1041 на KV-LUK. Звертаю увагу: на сметану з 15.10
+трохи піднялась ціна у виробника, тому в накладній вона вже нова.
+
+Накладна № РН-5540 від 21.10.2026
+ЄДРПОУ 31245678
+Магазин: KV-LUK
+
+1. Молоко пастеризоване 2,6% 900г п/е — 24 шт × 38,90 = 933,60
+2. Кефір 2,5% 450г — 16 шт × 26,40 = 422,40
+3. Сметана 20% 350г — 24 шт × 49,90 = 1197,60
+4. Сир кисломолочний 9% 350г — 20 шт × 62,00 = 1240,00
+
+Разом без ПДВ: 3793,60
+
+Оксана`;
+
+const LINES = [
+  { name: "Молоко пастеризоване 2,6% 900г п/е", qty: 24, price: "38,90", sku: "MLK-001", conf: "0,96", ok: true },
+  { name: "Кефір 2,5% 450г", qty: 16, price: "26,40", sku: "MLK-004", conf: "0,94", ok: true },
+  { name: "Сметана 20% 350г", qty: 24, price: "49,90", sku: "MLK-006", conf: "0,95", ok: false },
+  { name: "Сир кисломолочний 9% 350г", qty: 20, price: "62,00", sku: "MLK-011", conf: "0,93", ok: true },
+];
+
+const rows = (cells) => LINES.map((l, i) => cells(l, i)).join("");
+
+const STEPS = [
+  {
+    key: "lyst", tag: "Лист", who: ["код", "code"],
+    title: "Лист падає у вхідні",
+    note: "Жодної структури: звичайний лист живою мовою, іноді з вкладеним xlsx.",
+    sees: ["Новий документ у списку вхідних.", "Можна прочитати як є — нічого ще не змінено."],
+    hood: [
+      "Файл читається, прибираються BOM, CRLF і кінцеві пробіли — те, що змінюється від пересилки, а не від змісту.",
+      "<b>thread_id = sha256(вмісту)</b>. Той самий лист, надісланий двічі, дасть той самий тред.",
+      "xlsx тут же перетворюється на текст, і далі формат уже не має значення.",
+    ],
+    doc: () => `<h2>Документ постачальника</h2><pre class="m">${esc(LETTER)}</pre>`,
+  },
+  {
+    key: "dedupe", tag: "Дедуп", who: ["без llm", "code"],
+    title: "Чи це вже проходило?",
+    note: "Перша перевірка — найдешевша: якщо по цьому треду вже є накладна або акт, прогін закінчується тут.",
+    sees: ["Якщо лист повторний — одразу «вже проводили», без очікування."],
+    hood: [
+      "Запит у базу по thread_id. Ні виклику моделі, ні мережі.",
+      "Це виправлення після тесту: сам thread_id ідемпотентності <i>не</i> дає — LangGraph проганяє завершений тред заново з початку.",
+    ],
+    doc: () => `<h2>Перевірка треда</h2><pre class="m">thread_id  4623d089563e151e687154f3a7f3…
+накладна   <span class="lab">немає</span>
+акт        <span class="lab">немає</span>
+
+→ <span class="good">новий документ, працюємо далі</span></pre>`,
+  },
+  {
+    key: "extract", tag: "Витяг", who: ["llm", "llm"],
+    title: "Текст стає структурою",
+    note: "Єдине місце, де модель бачить вільну форму. Ціни вона переписує рядком, як у документі, і нічого не рахує.",
+    sees: ["Нічого. Очікування 8–15 секунд."],
+    hood: [
+      "Промпт + zod-схема. Невалідний JSON → ребро графа назад на себе, з текстом помилки, максимум дві спроби.",
+      "Не <span class='code'>withStructuredOutput()</span>: шлюз може не тримати function-calling, і дізналися б ми це на першому ж реальному листі.",
+      "Копійки з «38,90» рахує код, не модель. Арифметика грошей — не робота LLM.",
+    ],
+    doc: () => `<h2>Відповідь моделі → стан графа</h2><pre class="m">{
+  "supplierEdrpou": "31245678",
+  "storeCode": "KV-LUK",
+  "poNumber": "PO-2026-1041",
+  "docNumber": "РН-5540",
+  "docDate": "2026-10-21",
+  "pricesIncludeVat": false,
+  "totalKop": 379360,
+  "lines": [
+${LINES.map((l) => `    { "rawName": "${esc(l.name)}",\n      "qty": ${l.qty}, "priceKop": ${Number(l.price.replace(",", "")) } }`).join(",\n")}
+  ]
+}</pre>`,
+  },
+  {
+    key: "shortlist", tag: "Шортліст", who: ["без llm", "code"],
+    title: "Пʼять кандидатів, не весь каталог",
+    note: "Назва в документі ніколи не збігається з номенклатурою мережі. Але віддавати моделі всі 40 SKU — шлях, який ламається після двохсот.",
+    sees: ["Нічого."],
+    hood: [
+      "Назва нормалізується: «900г» → «900 г», «2,6%» → «2.6%», лапки й слеші геть.",
+      "Кандидати — за перетином токенів, де токени з цифрами важать <b>удвічі</b>: у молочці жирність і фасування різнять сусідні позиції, а слово «молоко» є в десятку назв.",
+      "Порядок детермінований, із tie-break по коду: шортліст однаковий між прогонами.",
+    ],
+    doc: () => `<h2>«Сметана 20% 350г» → кандидати</h2><pre class="m">нормалізовано   сметана 20% 350 г
+
+<span class="lab">1.</span> <span class="chip on">MLK-006</span> Сметана 20% 350 г      <span class="lab">збіг 1,00</span>
+<span class="lab">2.</span> <span class="chip">MLK-007</span> Сметана 15% 180 г      <span class="lab">збіг 0,33</span>
+<span class="lab">3.</span> <span class="chip">MLK-011</span> Сир кисломолочний 9% 350 г  <span class="lab">збіг 0,29</span>
+<span class="lab">4.</span> <span class="chip">MLK-012</span> Сир кисломолочний 5% 180 г  <span class="lab">збіг 0,14</span>
+<span class="lab">5.</span> <span class="chip">MLK-009</span> Йогурт натуральний 3% 280 г <span class="lab">збіг 0,12</span></pre>`,
+  },
+  {
+    key: "match", tag: "Вибір", who: ["llm", "llm"],
+    title: "Модель вибирає з пʼяти",
+    note: "І каже, наскільки впевнена. Нижче 0,8 — рядок іде до людини.",
+    sees: ["Нічого."],
+    hood: [
+      "Код поза шортлістом не приймається: вигадала — значить збігу немає.",
+      "Відповідь не JSON? Теж не аварія: рядок просто піде до людини.",
+      "Тут модель мусить відрізнити сметану <b>20% 350 г</b> від <b>15% 180 г</b>. На 60 прогонах — 35 правильних розрізнень із 35.",
+    ],
+    doc: () => `<h2>Зіставлення рядків</h2><table>
+      <thead><tr><th class="n">№</th><th>Рядок документа</th><th>SKU</th><th class="n">Впевненість</th></tr></thead>
+      <tbody>${rows((l, i) => `<tr><td class="n">${i + 1}</td><td>${esc(l.name)}</td>
+        <td class="code">${l.sku}</td><td class="n">${l.conf}</td></tr>`)}</tbody></table>`,
+  },
+  {
+    key: "rules", tag: "Правила", who: ["без llm", "code"],
+    title: "Десять правил, нуль LLM",
+    note: "Тут рахуються гроші, тому модель сюди не допускається взагалі: розбіжність у ціні мусить бути відтворюваною і перевірною без мережі.",
+    sees: ["Нічого — ще кілька мілісекунд."],
+    hood: [
+      "R1 ціна проти протоколу · R3 чинність протоколу · R4 кратність пакування · R5/R6 кількість проти заявки · R7 залишковий термін · R9 нав'язаний товар · R10 сума документа.",
+      "Усі гроші — <b>цілі копійки</b>. <span class='code'>0.1 + 0.2 !== 0.3</span> при нульовому допуску означав би відмову в прийманні на копійку з повітря.",
+      "Порівняння завжди <b>без ПДВ</b>, і протокол переводиться в простір документа, а не навпаки: зворотне ділення дає копійку похибки й фальшиве «завищення».",
+    ],
+    doc: () => `<h2>Результат валідації</h2><table>
+      <thead><tr><th class="n">№</th><th>Рядок</th><th class="n">К-ть</th><th class="n">Ціна</th><th>Протокол</th></tr></thead>
+      <tbody>${rows((l, i) => `<tr class="${l.ok ? "" : "hit"}"><td class="n">${i + 1}</td><td>${esc(l.name)}</td>
+        <td class="n">${l.qty}</td><td class="n">${l.price}</td>
+        <td>${l.ok ? '<span class="good">збігається</span>' : '<span class="why">47,60 — ціна вище протоколу</span>'}</td></tr>`)}</tbody></table>
+      <pre class="m" style="margin-top:10px">R1 price_above_protocol · блокуюча · рядок 3
+MLK-006: 4990 коп проти протокольних 4760 коп</pre>`,
+  },
+  {
+    key: "review", tag: "Людина", who: ["людина", "human"],
+    title: "Граф спиняється посеред роботи",
+    note: "Одна блокуюча розбіжність — і рішення вже не машинне.",
+    sees: [
+      "Таблиця з позначеним третім рядком. Галочка з нього <b>знята</b>: дефолт безпечний.",
+      "Три кнопки: прийняти все, прийняти позначені, відмовити.",
+    ],
+    hood: [
+      "<span class='code'>interrupt()</span> зберігає весь стан на диск і виходить. Процес може померти — рішення прийде іншим процесом, можливо через годину.",
+      "Тред з'являється в черзі рішень. Запис у чергу стоїть <i>перед</i> паузою, тому мусить бути ідемпотентним: при відновленні тіло вузла виконується повторно.",
+      "Без чекпойнтера на диску все це було б неможливе, і саме тому драйвер БД один для бізнес-даних і для стану графа.",
+    ],
+    doc: () => `<h2>Що показано товарознавцю</h2><table>
+      <thead><tr><th>✓</th><th class="n">№</th><th>Рядок</th><th class="n">Ціна</th><th>Розбіжність</th></tr></thead>
+      <tbody>${rows((l, i) => `<tr class="${l.ok ? "" : "hit"}"><td>${l.ok ? "☑" : "☐"}</td><td class="n">${i + 1}</td>
+        <td>${esc(l.name)}</td><td class="n">${l.price}</td>
+        <td>${l.ok ? '<span class="lab">—</span>' : '<span class="why">ціна вище протоколу</span>'}</td></tr>`)}</tbody></table>
+      <pre class="m" style="margin-top:10px">⏸ тред 4623d089563e… чекає рішення</pre>`,
+  },
+  {
+    key: "commit", tag: "Проведення", who: ["без llm", "code"],
+    title: "Накладна на прийняте, акт на решту",
+    note: "Товарознавець прийняв рядки 1, 2 і 4. Третій відкинув через ціну.",
+    sees: [
+      "«Проведено частково», накладна на 2596,00 грн без ПДВ.",
+      "Готовий текст для постачальника — можна копіювати в лист.",
+    ],
+    hood: [
+      "Одна транзакція: накладна, її рядки і аляси. Або все, або нічого.",
+      "<b>UNIQUE(постачальник, номер, дата)</b> — другий рівень ідемпотентності: той самий документ, що прийшов іншим каналом, має інший хеш, але провестися вдруге не зможе.",
+      "Текст акта пише модель — але якщо вона недоступна, віддається детермінована таблиця: накладна вже проведена, втрачати прогін через генератор тексту смішно.",
+    ],
+    doc: () => `<h2>Проведено</h2><p><span class="seal">накладна № 1 · частково</span></p>
+      <pre class="m">рядків 3 із 4 · 259600 коп без ПДВ · <span class="good">posted</span>
+акт розбіжностей № 1 · рядок 3 · price_above_protocol</pre>
+      <pre class="m" style="margin-top:12px"><span class="lab">текст для постачальника:</span>
+
+Шановні представники ТОВ «Молочний Дім»,
+
+Під час приймання накладної РН-5540 від 2026-10-21 виявлено
+розбіжність:
+— Сметана 20% 350г: ціна вище протоколу MLK-006 — 4990 коп
+  проти протокольних 4760 коп.
+Прийнято рядки: 1, 2, 4.
+Сума за документом постачальника: 3793,60 грн без ПДВ.
+Прийнято на суму: 2596,00 грн без ПДВ.
+Просимо надіслати виправлений документ або погодити нову
+ціну протоколом.</pre>`,
+  },
+  {
+    key: "learn", tag: "Навчання", who: ["без llm", "code"],
+    title: "Наступний такий лист буде дешевшим",
+    note: "Ось чому таке впроваджують замість того, щоб далі робити руками: система дешевіє з кожним листом.",
+    sees: ["У розділі «чого система навчилась» зʼявились чотири записи."],
+    hood: [
+      "Підтверджений збіг пишеться як аляс пари <b>(постачальник, нормалізована назва)</b> → SKU. Той самий рядок наступного разу матчиться без LLM і без людини.",
+      "Аляс створює тільки рішення людини. Аляс із рішення моделі закріпив би галюцинацію назавжди — і помилка стала б детермінованою, тобто ніколи більше не потрапила б на очі.",
+      "Вчиться і з рядка, відкинутого через <i>ціну</i>: зіставлення в ньому людина не заперечувала. Не вчиться з рядка, який виключили без жодної розбіжності — там причина невідома, і це міг бути якраз неправильний SKU.",
+    ],
+    doc: () => `<h2>Вивчені аляси</h2><pre class="m">MLK-001  ← молоко пастеризоване 2.6% 900 г п е
+MLK-004  ← кефір 2.5% 450 г
+MLK-006  ← сметана 20% 350 г      <span class="lab">(відкинутий рядок, але збіг правильний)</span>
+MLK-011  ← сир кисломолочний 9% 350 г
+
+<span class="lab">наступний такий лист:</span> 1 виклик моделі замість 5</pre>`,
+  },
+];
+
+function esc(s) {
+  return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+}
+
+const el = (id) => document.getElementById(id);
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let at = 0;
+let timer = null;
+let playing = !reduced;
+
+el("rail").innerHTML = STEPS.map((s, i) => `
+  <li style="display:contents"><button data-go="${i}">
+    <span class="n">${String(i + 1).padStart(2, "0")}</span>${s.tag}
+  </button></li>`).join("");
+
+function render() {
+  const step = STEPS[at];
+  el("title").textContent = step.title;
+  el("note").innerHTML = step.note;
+  el("who").textContent = step.who[0];
+  el("who").className = `badge ${step.who[1]}`;
+  el("sees").innerHTML = step.sees.map((s) => `<li>${s}</li>`).join("");
+  el("hood").innerHTML = step.hood.map((s) => `<li>${s}</li>`).join("");
+
+  const doc = el("doc");
+  doc.innerHTML = step.doc();
+  doc.classList.remove("fade");
+  void doc.offsetWidth;
+  doc.classList.add("fade");
+
+  for (const button of el("rail").querySelectorAll("button")) {
+    const i = Number(button.dataset.go);
+    button.setAttribute("aria-current", String(i === at));
+    button.classList.toggle("done", i < at);
+  }
+  el("pos").textContent = `${at + 1} / ${STEPS.length}`;
+}
+
+function go(next, byHand) {
+  at = (next + STEPS.length) % STEPS.length;
+  if (byHand) stop();
+  render();
+}
+
+function tick() {
+  timer = setTimeout(() => {
+    at = (at + 1) % STEPS.length;
+    render();
+    tick();
+  }, at === 0 ? 4200 : 5200);
+}
+
+function stop() {
+  playing = false;
+  clearTimeout(timer);
+  el("play").textContent = "Грати";
+}
+
+function start() {
+  playing = true;
+  el("play").textContent = "Пауза";
+  clearTimeout(timer);
+  tick();
+}
+
+el("rail").addEventListener("click", (e) => {
+  const button = e.target.closest("button[data-go]");
+  if (button) go(Number(button.dataset.go), true);
+});
+el("next").onclick = () => go(at + 1, true);
+el("prev").onclick = () => go(at - 1, true);
+el("play").onclick = () => (playing ? stop() : start());
+addEventListener("keydown", (e) => {
+  if (e.key === "ArrowRight") go(at + 1, true);
+  if (e.key === "ArrowLeft") go(at - 1, true);
+});
+
+render();
+if (playing) start();
+else el("play").textContent = "Грати";
+</script>
+</body>
+</html>

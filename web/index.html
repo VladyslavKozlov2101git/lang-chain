@@ -26,6 +26,8 @@
   }
   header h1 { font-size: 17px; margin: 0; font-weight: 650; }
   header .dim { color: var(--dim); font-size: 13px; }
+  header .howto { margin-left: auto; font-size: 13px; color: var(--accent); text-decoration: none; }
+  header .howto:hover { text-decoration: underline; }
   main {
     display: grid; grid-template-columns: 280px 1fr; gap: 16px;
     padding: 16px; max-width: 1400px; margin: 0 auto;
@@ -89,6 +91,7 @@
 <header>
   <h1>Приймання поставки</h1>
   <span class="dim" id="hint">постачальник надіслав документ — далі все тут</span>
+  <a class="howto" href="/shlyah">Як це працює, покроково →</a>
 </header>
 
 <main>

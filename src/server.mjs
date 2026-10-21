@@ -28,7 +28,15 @@ import { callKind, withTrace } from "./trace.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const INBOX = path.resolve(HERE, "..", "fixtures", "inbox");
-const PAGE = path.resolve(HERE, "..", "web", "index.html");
+const WEB = path.resolve(HERE, "..", "web");
+
+// Білий список сторінок, а не статика з теки: зайвий файл у web/ не має ставати
+// маршрутом сам собою.
+const PAGES = {
+  "/": "index.html",
+  "/index.html": "index.html",
+  "/shlyah": "shlyah.html",
+};
 
 const listInbox = async () => (await readdir(INBOX)).filter((f) => /\.(txt|xlsx)$/i.test(f)).sort();
 
@@ -201,9 +209,10 @@ export function createServer({ db, makeModel = createModel, today } = {}) {
     };
 
     try {
-      if (route === "GET /" || route === "GET /index.html") {
-        // Читаємо щоразу: правку сторінки видно без рестарту.
-        return send(200, await readFile(PAGE, "utf8"), "text/html; charset=utf-8");
+      if (req.method === "GET" && PAGES[url.pathname]) {
+        // Читаємо щоразу: правку сторінки видно без рестарту сервера.
+        const html = await readFile(path.join(WEB, PAGES[url.pathname]), "utf8");
+        return send(200, html, "text/html; charset=utf-8");
       }
 
       const handler = api[route];

@@ -45,6 +45,25 @@ describe("сторінка й довідники", () => {
     expect(await res.text()).toContain("<title>Приймання поставки</title>");
   });
 
+  test("сторінка з поясненням віддається з власним скелетом", async () => {
+    const base = await listen({ db: seeded(), model: new Scripted([]) });
+    const res = await fetch(base + "/shlyah");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    // Копія артефакта: там скелет додає платформа, тут він мусить бути свій,
+    // інакше браузер рендерить у quirks mode.
+    expect(html.startsWith("<!doctype html>")).toBe(true);
+    expect(html).toContain("<title>Шлях накладної</title>");
+    expect(html).toContain("</body>");
+  });
+
+  test("файл у web/ не стає маршрутом сам собою", async () => {
+    const base = await listen({ db: seeded(), model: new Scripted([]) });
+    for (const bad of ["/shlyah.html", "/../package.json", "/web/index.html"]) {
+      expect((await fetch(base + bad)).status).toBe(404);
+    }
+  });
+
   test("вхідні перелічують фікстури з типом", async () => {
     const base = await listen({ db: seeded(), model: new Scripted([]) });
     const { body } = await get(base, "/api/inbox");
