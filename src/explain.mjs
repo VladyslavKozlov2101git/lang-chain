@@ -6,7 +6,7 @@
  * накладна на цей момент уже проведена, і втрачати її через збій генератора тексту
  * було б смішно.
  */
-import { formatUah } from "./text.mjs";
+import { formatUah, replyText } from "./text.mjs";
 
 const REASON = {
   price_above_protocol: "ціна вище протоколу",
@@ -35,13 +35,6 @@ export function issueLines(doc, issues) {
     return `${where} — ${reasonText(issue.code)}${flag}: ${issue.detail}`;
   });
 }
-
-const textOf = (reply) => {
-  if (typeof reply === "string") return reply;
-  const content = reply?.content;
-  if (Array.isArray(content)) return content.map((part) => part.text ?? "").join("");
-  return String(content ?? "");
-};
 
 /**
  * Суми завжди підписані, і їх дві.
@@ -103,7 +96,7 @@ ${sums(doc, acceptedTotalKop).join("\n")}
 підписом: сума за документом і прийнята сума це різні числа, і плутати їх не можна.`;
 
   try {
-    const message = textOf(await model.invoke(prompt)).trim();
+    const message = replyText(await model.invoke(prompt)).trim();
     return message || fallback(doc, issues, accepted, acceptedTotalKop);
   } catch (e) {
     console.error(`[explain] модель недоступна (${e.message}), віддаю детермінований текст`);

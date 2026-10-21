@@ -11,7 +11,7 @@
  */
 import { z } from "zod";
 
-import { parseKop } from "./text.mjs";
+import { parseKop, replyText } from "./text.mjs";
 
 export class ExtractError extends Error {
   constructor(message, { lastReply } = {}) {
@@ -78,13 +78,6 @@ const INSTRUCTIONS = `Ти оператор приймання товару в �
 Схема:
 ${SHAPE}`;
 
-const textOf = (reply) => {
-  if (typeof reply === "string") return reply;
-  const content = reply?.content;
-  if (Array.isArray(content)) return content.map((part) => part.text ?? "").join("");
-  return String(content ?? "");
-};
-
 /** Модель любить огорнути JSON у ```json … ``` або додати привітання. */
 function jsonFrom(raw) {
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -139,7 +132,7 @@ export async function extract({ model, text, feedback = "" }) {
     : "";
   const prompt = `${INSTRUCTIONS}${retry}\n\nДокумент:\n"""\n${text}\n"""`;
 
-  const reply = textOf(await model.invoke(prompt));
+  const reply = replyText(await model.invoke(prompt));
   try {
     return { doc: toKop(DocSchema.parse(jsonFrom(reply))) };
   } catch (e) {

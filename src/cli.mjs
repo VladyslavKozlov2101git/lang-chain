@@ -19,7 +19,9 @@ import { reasonText } from "./explain.mjs";
 import { buildGraph } from "./graph.mjs";
 import { intake } from "./intake.mjs";
 import { createModel } from "./llm.mjs";
+import { startServer } from "./server.mjs";
 import { formatUah } from "./text.mjs";
+import { callKind, withTrace } from "./trace.mjs";
 
 const USAGE = `supply-flow — приймання поставки від постачальника
 
@@ -30,8 +32,12 @@ const USAGE = `supply-flow — приймання поставки від пос
   node supply.mjs resume <тред> --reject       відмовити
   node supply.mjs resume <тред> --lines 1,3    прийняти лише ці рядки (нумерація як у документі)
   node supply.mjs resume <тред>                продовжити прогін, що впав
+  node supply.mjs web                         те саме у браузері, на 127.0.0.1
+
+  --trace     до intake і resume: друкувати промпти й відповіді моделі
 
   SUPPLY_DB   шлях до файлу БД (дефолт ./supply.db)
+  SUPPLY_PORT порт для web (дефолт 5173)
   MODEL       модель шлюзу opencode (дефолт qwen3.8-flash)`;
 
 export function parseArgs(args) {
@@ -138,9 +144,38 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
     return 0;
   }
 
+  if (command === "web") {
+    const { url } = await startServer({ dbFile, today });
+    log(`  фронт на ${url}`);
+    log(`  БД ${dbFile}\n  Ctrl+C щоб спинити`);
+    return 0; // сервер сам тримає процес живим
+  }
+
   const db = openDb(dbFile);
-  const graphWith = async () =>
-    buildGraph({ model: await makeModel(), db, today, checkpointer: checkpointerFor(db) });
+
+  // --trace підмінює модель обгорткою: вузли кличуть у неї тільки .invoke, тому
+  // трасування нічого не знає про їхній код і нічого в ньому не псує.
+  const graphWith = async () => {
+    const traced = args.trace ? withTrace(await makeModel()) : null;
+    return {
+      graph: buildGraph({
+        model: traced ? traced.model : await makeModel(),
+        db,
+        today,
+        checkpointer: checkpointerFor(db),
+      }),
+      trace: traced,
+    };
+  };
+
+  const printTrace = (traced) => {
+    if (!traced) return;
+    for (const [i, call] of traced.calls.entries()) {
+      log(`\n  ── ${i + 1}. ${callKind(call.prompt)} · ${call.ms} мс ──`);
+      log(`\n  запит:\n${call.prompt}`);
+      log(`\n  відповідь:\n${call.error ? `ПОМИЛКА: ${call.error}` : call.reply}\n`);
+    }
+  };
 
   switch (command) {
     case "seed": {
@@ -174,25 +209,27 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
       const { threadId, source, raw } = await intake(target);
       log(`  ${source.kind}: ${source.path}\n  тред ${threadId}`);
 
-      const graph = await graphWith();
+      const { graph, trace } = await graphWith();
       const config = { configurable: { thread_id: threadId } };
       try {
         const state = await graph.invoke({ threadId, source, raw }, config);
         const paused = state.__interrupt__?.[0]?.value;
         if (paused) printPause(paused, log);
         else printOutcome(db, threadId, state, log);
+        printTrace(trace);
         return paused ? 2 : 0;
       } catch (e) {
         // AC-27: стан на диску цілий, тому друкуємо, чим продовжити.
         log(`\n  прогін упав: ${e.message}`);
         log(`  стан збережено; продовжити: node supply.mjs resume ${threadId}\n`);
+        printTrace(trace);
         return 1;
       }
     }
 
     case "resume": {
       if (!target) throw new Error("вкажи тред: node supply.mjs resume <тред> --approve");
-      const graph = await graphWith();
+      const { graph, trace } = await graphWith();
       const config = { configurable: { thread_id: target } };
       const before = await graph.getState(config);
       if (!before.createdAt) throw new Error(`треда ${target} немає — перевір node supply.mjs review`);
@@ -208,9 +245,11 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
       const paused = state.__interrupt__?.[0]?.value;
       if (paused) {
         printPause(paused, log);
+        printTrace(trace);
         return 2;
       }
       printOutcome(db, target, state, log);
+      printTrace(trace);
       return 0;
     }
 

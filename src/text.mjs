@@ -56,3 +56,11 @@ export function normalizeName(raw) {
 
 /** Токени нормалізованої назви — основа шортліста. */
 export const tokens = (raw) => normalizeName(raw).split(" ").filter(Boolean);
+
+/** Відповідь чат-моделі → текст. content буває рядком, буває масивом частин. */
+export function replyText(reply) {
+  if (typeof reply === "string") return reply;
+  const content = reply?.content;
+  if (Array.isArray(content)) return content.map((part) => part.text ?? "").join("");
+  return String(content ?? "");
+}

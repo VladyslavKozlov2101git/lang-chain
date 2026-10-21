@@ -11,7 +11,7 @@
  */
 import { z } from "zod";
 
-import { normalizeName, tokens } from "./text.mjs";
+import { normalizeName, replyText, tokens } from "./text.mjs";
 
 const PickSchema = z.object({
   code: z.string().nullable(),
@@ -42,13 +42,6 @@ export function shortlist(rawName, skus, limit = 5) {
     .map((c) => c.sku);
 }
 
-const textOf = (reply) => {
-  if (typeof reply === "string") return reply;
-  const content = reply?.content;
-  if (Array.isArray(content)) return content.map((part) => part.text ?? "").join("");
-  return String(content ?? "");
-};
-
 const PROMPT = (rawName, candidates) => `Ти оператор приймання товару в мережі магазинів.
 Постачальник написав у накладній: "${rawName}"
 
@@ -63,7 +56,7 @@ ${candidates.map((sku) => `${sku.code} — ${sku.name} (${sku.unit})`).join("\n"
 {"code": "MLK-001" | null, "confidence": 0.95}`;
 
 async function pick({ model, rawName, candidates }) {
-  const raw = textOf(await model.invoke(PROMPT(rawName, candidates)));
+  const raw = replyText(await model.invoke(PROMPT(rawName, candidates)));
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
   if (start === -1 || end <= start) return { code: null, confidence: 0 };

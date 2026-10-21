@@ -58,8 +58,11 @@ export const docReply = ({ docNumber = "РН-5512", total = "3738,40", lines = L
 export const picks = (lines = LINES) =>
   lines.map(([, , , code]) => JSON.stringify({ code, confidence: 0.95 }));
 
-/** Документ, у якому сметана дорожча за протокол — найчастіший реальний випадок. */
+/** Документ, у якому сметана дорожча за протокол — найчастіший реальний випадок.
+ *  Номер той самий, що у фікстурі r01-cina-vyshche.txt: фейкова відповідь моделі
+ *  мусить відповідати документу, який їй згодували. */
 export const overPriced = () => ({
+  docNumber: "РН-5540",
   lines: LINES.map((l) => (l[3] === "MLK-006" ? [l[0], l[1], "49,90", l[3]] : l)),
   total: "3793,60",
 });

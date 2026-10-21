@@ -47,13 +47,13 @@ describe("AC-20 — блокуюча розбіжність спиняє гра�
     const out = await run(graphOver(db, model), "t-r01");
 
     const paused = interruptOf(out);
-    expect(paused.docNumber).toBe("РН-5512");
+    expect(paused.docNumber).toBe("РН-5540");
     expect(paused.issues.map((i) => i.code)).toEqual(["price_above_protocol"]);
     expect(receiptOf(db, "t-r01")).toBeNull();
 
     const queue = pendingReviews(db);
     expect(queue).toHaveLength(1);
-    expect(queue[0]).toMatchObject({ threadId: "t-r01", docNumber: "РН-5512", issuesCount: 1 });
+    expect(queue[0]).toMatchObject({ threadId: "t-r01", docNumber: "РН-5540", issuesCount: 1 });
   });
 
   test("AC-21: resume --approve проводить усі рядки й пише акт", async () => {

@@ -94,7 +94,7 @@ describe("AC-29 — команди", () => {
 
     const { code, text } = await runCli(["review"], { dbFile });
     expect(code).toBe(0);
-    expect(text).toContain("РН-5512");
+    expect(text).toContain("РН-5540");
     expect(text).toContain("KV-LUK");
     expect(text).toContain("Молочний Дім");
   });

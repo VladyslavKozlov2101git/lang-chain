@@ -9,6 +9,8 @@
     "seed": "node supply.mjs seed",
     "fixtures": "node fixtures/make-xlsx.mjs",
     "eval": "node eval/run.mjs",
+    "web": "node supply.mjs web",
+    "web": "node supply.mjs web",
     "intake": "node supply.mjs intake",
     "resume": "node supply.mjs resume",
     "review": "node supply.mjs review"
