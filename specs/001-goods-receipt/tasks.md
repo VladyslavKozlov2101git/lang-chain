@@ -3,18 +3,20 @@
 Порядок має значення: кожна задача спирається на попередні. Жодна не вважається
 зробленою без свого тесту, і номер AC стоїть у назві тесту.
 
-- [ ] **T1 — Каркас.** `package.json` (ESM, Jest 30 з `--experimental-vm-modules`),
+- [x] **T1 — Каркас.** `package.json` (ESM, Jest 30 з `--experimental-vm-modules`),
       депенденси: `@langchain/core`, `@langchain/openai`, `@langchain/langgraph`,
-      `@langchain/langgraph-checkpoint-sqlite`, `better-sqlite3`, `node-xlsx`, `zod`, `jest`.
+      `@langchain/langgraph-checkpoint-sqlite`, `exceljs`, `zod`, `jest`. Драйвер БД — вбудований
+      `node:sqlite`, нативного `better-sqlite3` у прямих залежностях немає.
       Скрипти `test`, `seed`, `intake`, `review`.
       → закриває частину **AC-30** (порожній `npm test` проходить)
 
-- [ ] **T2 — БД і seed.** `src/db.mjs`: схема з plan.md, міграція на старті, `npm run seed`.
+- [x] **T2 — БД і seed.** `src/db.mjs`: схема з plan.md, міграція на старті, `npm run seed`, шим `node:sqlite` під
+      офіційний `SqliteSaver` (+ тест на put/getTuple/putWrites, бо тихий злам шима ламає resume).
       `seed/`: 3 магазини, 3 постачальники, ~40 SKU із кратностями, ставками ПДВ 20/14%
       і мін. залишковим терміном, 6 заявок із рядками.
       → тест: seed проганяється двічі й дає той самий стан
 
-- [ ] **T3 — Гроші й нормалізація.** Парсер копійок (`45,80` / `45.80` / `45 грн 80 коп`),
+- [x] **T3 — Гроші й нормалізація.** Парсер копійок (`45,80` / `45.80` / `45 грн 80 коп`),
       нормалізатор назв товарів (регістр, пробіли, одиниці, `,`↔`.` у числах).
       → **AC-4**
 

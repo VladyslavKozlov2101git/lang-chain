@@ -57,7 +57,8 @@ intake ──> extract ──> match ──> validate ──> route
 ```
 supply.mjs                  точка входу → src/cli.mjs
 src/llm.mjs                 обв'язка opencode (перенесена з гілки node), модель параметром
-src/db.mjs                  better-sqlite3: схема, міграція, seed, запити
+src/text.mjs                чисті хелпери: копійки, нормалізація назв, токени
+src/db.mjs                  node:sqlite: схема, міграція, seed, запити, шим чекпойнтера
 src/intake.mjs              txt/xlsx → raw, нормалізація, хеш
 src/extract.mjs             промпт + zod-схема + ретрай
 src/match.mjs               нормалізатор назв, шортліст, вибір через LLM, аляси
@@ -76,13 +77,13 @@ src/cli.mjs                 intake | review | resume
 
 ## Схема БД
 
-Один файл `supply.db`, один драйвер `better-sqlite3` — і на бізнес-дані, і на чекпойнти
+Один файл `supply.db`, один драйвер `node:sqlite` — і на бізнес-дані, і на чекпойнти
 LangGraph.
 
 ```sql
 store(id, code UNIQUE, name)
 supplier(id, edrpou UNIQUE, name)
-sku(id, code UNIQUE, name, unit, pack_size, vat_rate, min_shelf_pct)
+sku(id, code UNIQUE, name, unit, pack_size, vat_rate, shelf_life_days, min_shelf_pct)
 price_protocol(id, supplier_id, sku_id, price_net_kop, valid_from, valid_to)
 po(id, number, store_id, supplier_id, created_at)
 po_line(id, po_id, sku_id, qty)
@@ -125,8 +126,8 @@ review_queue(thread_id PRIMARY KEY, store_code, supplier_name, issues_count,
 | шортліст на схожості токенів, не на embeddings | embeddings тягнуть модель на 120 МБ і час на CPU. Шортліст — окрема функція, тому заміна на embeddings — це заміна однієї функції. |
 | аляс на пару (постачальник, назва) | глобальний аляс тихо підставить чужий SKU, і помилка стане детермінованою — тобто повторюватиметься й ніколи не буде помічена. |
 | аляс пише тільки людина | аляс із рішення LLM закріплює галюцинацію назавжди. |
-| `better-sqlite3` на все, без `node:sqlite` | офіційний чекпойнтер однаково тягне `better-sqlite3`; два sqlite-драйвери заради «нуль депенденсів» — економія, якої вже немає. |
-| `node-xlsx` | SheetJS на npm заморожений на 0.18.5, `exceljs` тягне 8+ залежностей. Ціна: lockfile вказує на `cdn.sheetjs.com`, і в ізольованому CI встановлення зламається — тоді `exceljs`. |
+| `node:sqlite` на все + шим під офіційний чекпойнтер | планували навпаки — `better-sqlite3` на все, бо офіційний `SqliteSaver` залежить від нього. Але тут нативний модуль не збирається: `node-gyp rebuild` без тулчейна, а install-скрипти npm заблоковані. Виявилось, що `SqliteSaver` приймає готовий `db` у конструктор і чіпає лише `pragma/exec/prepare/transaction`, а падає нативний бінд тільки в конструкторі `better-sqlite3` — тобто імпорт пакета живий. Тому драйвер стдлібний, логіка чекпойнтера офіційна, між ними ~20 рядків шима в `db.mjs`. `SqliteSaver.fromConnString` викликати не можна. Бонус: нуль нативних збірок і одне з'єднання на обидві ролі. |
+| `exceljs` | `node-xlsx` був лінивішим (одна функція, масив масивів), але тягне SheetJS тарболом з `cdn.sheetjs.com`, а npm тут відмовляє remote-тарболам (`EALLOWREMOTE`). SheetJS на самому npm заморожений на 0.18.5. Ціна переходу: 8+ залежностей і важчий API. |
 | ціни цілими копійками | `0.1 + 0.2 !== 0.3` у R1 = відмова в прийманні на копійку з повітря. |
 | відкинуті рядки закривають тред | інакше черга review стає звалищем, з якого ніхто нічого не прибирає. |
 | eval не є Jest-тестом | якість LLM — це число, за яким дивляться, а не червоний білд. |

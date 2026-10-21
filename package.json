@@ -1,0 +1,38 @@
+{
+  "name": "supply-flow",
+  "version": "1.0.0",
+  "description": "Приймання поставки від постачальника: LangGraph + SQLite",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "seed": "node supply.mjs seed",
+    "intake": "node supply.mjs intake",
+    "review": "node supply.mjs review"
+  },
+  "jest": {
+    "testMatch": [
+      "**/tests/**/*.test.mjs"
+    ],
+    "transform": {},
+    "moduleFileExtensions": [
+      "mjs",
+      "js",
+      "json"
+    ]
+  },
+  "dependencies": {
+    "@langchain/core": "^1.2.20",
+    "@langchain/langgraph": "^1.5.1",
+    "@langchain/langgraph-checkpoint-sqlite": "^1.1.0",
+    "@langchain/openai": "^1.6.3",
+    "exceljs": "^4.4.0",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "jest": "^30.5.2"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true
+  }
+}
