@@ -1,0 +1,376 @@
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { Command } from "@langchain/langgraph";
+
+import { allSkus, checkpointerFor, openDb, pendingReviews, receiptOf, seedDb } from "../src/db.mjs";
+import { buildGraph } from "../src/graph.mjs";
+
+const TODAY = "2026-10-21";
+
+/**
+ * Модель за сценарієм: віддає відповіді строго по порядку викликів і падає на
+ * несподіваному. FakeListChatModel крутить список по колу, тобто зайвий виклик
+ * моделі пройшов би непоміченим — а в графі саме кількість викликів і цікава.
+ */
+class Scripted {
+  constructor(responses) {
+    this.responses = responses;
+    this.prompts = [];
+  }
+
+  async invoke(prompt) {
+    const next = this.responses[this.prompts.length];
+    if (next === undefined) {
+      throw new Error(`Scripted: несподіваний виклик моделі #${this.prompts.length + 1}`);
+    }
+    this.prompts.push(prompt);
+    if (next instanceof Error) throw next;
+    return next;
+  }
+}
+
+const LINES = [
+  ["Молоко пастеризоване 2,6% 900г п/е", 24, "38,90", "MLK-001"],
+  ["Кефір 2,5% 450г", 16, "26,40", "MLK-004"],
+  ["Сметана 20% 350г", 24, "47,60", "MLK-006"],
+  ["Сир кисломолочний 9% 350г", 20, "62,00", "MLK-011"],
+];
+
+const docReply = ({ docNumber = "РН-5512", total = "3738,40", lines = LINES, ...over } = {}) =>
+  JSON.stringify({
+    supplierEdrpou: "31245678",
+    supplierName: "ТОВ «Молочний Дім»",
+    storeCode: "KV-LUK",
+    poNumber: "PO-2026-1041",
+    docNumber,
+    docDate: TODAY,
+    pricesIncludeVat: false,
+    total,
+    lines: lines.map(([rawName, qty, price]) => ({
+      rawName,
+      qty,
+      unit: "шт",
+      price,
+      expiresOn: null,
+    })),
+    ...over,
+  });
+
+const picks = (lines = LINES) =>
+  lines.map(([, , , code]) => JSON.stringify({ code, confidence: 0.95 }));
+
+const setup = async ({ file } = {}) => {
+  const dir = file ? await mkdtemp(path.join(tmpdir(), "supply-graph-")) : null;
+  const dbFile = dir ? path.join(dir, "supply.db") : ":memory:";
+  const db = openDb(dbFile);
+  seedDb(db);
+  return { db, dbFile };
+};
+
+const graphOver = (db, model) =>
+  buildGraph({ model, db, today: TODAY, checkpointer: checkpointerFor(db) });
+
+const cfg = (threadId) => ({ configurable: { thread_id: threadId } });
+const input = (threadId) => ({ threadId, source: { path: "лист.txt", kind: "txt" }, raw: { text: "текст листа" } });
+
+const run = (graph, threadId) => graph.invoke(input(threadId), cfg(threadId));
+const resume = (graph, threadId, decision) =>
+  graph.invoke(new Command({ resume: decision }), cfg(threadId));
+
+const interruptOf = (result) => result.__interrupt__?.[0]?.value ?? null;
+
+describe("AC-19 — чистий документ проводиться без людини", () => {
+  test("статус posted, накладна в БД, черга review порожня", async () => {
+    const { db } = await setup();
+    const model = new Scripted([docReply(), ...picks()]);
+    const out = await run(graphOver(db, model), "t-clean");
+
+    expect(interruptOf(out)).toBeNull();
+    expect(out.status).toBe("posted");
+    expect(out.issues).toEqual([]);
+
+    const receipt = receiptOf(db, "t-clean");
+    expect(receipt.status).toBe("posted");
+    expect(receipt.totalNetKop).toBe(373840);
+    expect(db.prepare("SELECT count(*) n FROM receipt_line").get().n).toBe(4);
+    expect(pendingReviews(db)).toEqual([]);
+    // акта немає: нема про що писати постачальнику
+    expect(db.prepare("SELECT count(*) n FROM discrepancy_act").get().n).toBe(0);
+  });
+
+  test("без рішення людини алясів не з'являється", async () => {
+    const { db } = await setup();
+    await run(graphOver(db, new Scripted([docReply(), ...picks()])), "t-clean");
+    expect(db.prepare("SELECT count(*) n FROM sku_alias").get().n).toBe(0);
+  });
+});
+
+describe("AC-20 — блокуюча розбіжність спиняє граф", () => {
+  const overPriced = () => {
+    const lines = LINES.map((l) => (l[3] === "MLK-006" ? [l[0], l[1], "49,90", l[3]] : l));
+    return { lines, total: "3793,60" };
+  };
+
+  test("interrupt із таблицею розбіжностей, накладної немає, тред у черзі", async () => {
+    const { db } = await setup();
+    const model = new Scripted([docReply(overPriced()), ...picks()]);
+    const out = await run(graphOver(db, model), "t-r01");
+
+    const paused = interruptOf(out);
+    expect(paused.docNumber).toBe("РН-5512");
+    expect(paused.issues.map((i) => i.code)).toEqual(["price_above_protocol"]);
+    expect(receiptOf(db, "t-r01")).toBeNull();
+
+    const queue = pendingReviews(db);
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({ threadId: "t-r01", docNumber: "РН-5512", issuesCount: 1 });
+  });
+
+  test("AC-21: resume --approve проводить усі рядки й пише акт", async () => {
+    const { db } = await setup();
+    const model = new Scripted([docReply(overPriced()), ...picks(), "Доброго дня! Просимо погодити ціну."]);
+    const graph = graphOver(db, model);
+    await run(graph, "t-r01");
+    const out = await resume(graph, "t-r01", { action: "approve" });
+
+    expect(out.status).toBe("posted");
+    expect(db.prepare("SELECT count(*) n FROM receipt_line").get().n).toBe(4);
+    expect(out.message).toContain("погодити ціну");
+    expect(db.prepare("SELECT count(*) n FROM discrepancy_act").get().n).toBe(1);
+    expect(pendingReviews(db)).toEqual([]);
+  });
+
+  test("AC-22: resume --reject не створює накладної, але створює акт", async () => {
+    const { db } = await setup();
+    const model = new Scripted([docReply(overPriced()), ...picks(), "Відмовляємо в прийманні."]);
+    const graph = graphOver(db, model);
+    await run(graph, "t-r01");
+    const out = await resume(graph, "t-r01", { action: "reject" });
+
+    expect(out.status).toBe("rejected");
+    expect(receiptOf(db, "t-r01")).toBeNull();
+    expect(db.prepare("SELECT count(*) n FROM discrepancy_act").get().n).toBe(1);
+    expect(pendingReviews(db)).toEqual([]);
+  });
+
+  test("AC-23: часткове приймання — накладна на схвалені, акт на решту", async () => {
+    const { db } = await setup();
+    const model = new Scripted([docReply(overPriced()), ...picks(), "Прийнято частково."]);
+    const graph = graphOver(db, model);
+    await run(graph, "t-r01");
+    const out = await resume(graph, "t-r01", { action: "partial", lines: [0, 1] });
+
+    expect(out.status).toBe("partial");
+    const names = db.prepare("SELECT raw_name FROM receipt_line ORDER BY id").all();
+    expect(names).toHaveLength(2);
+    expect(names[0].raw_name).toContain("Молоко");
+    expect(receiptOf(db, "t-r01").status).toBe("partial");
+    expect(db.prepare("SELECT count(*) n FROM discrepancy_act").get().n).toBe(1);
+  });
+
+  test("AC-23: відкинуті рядки не повертаються в чергу — тред закритий", async () => {
+    const { db } = await setup();
+    const model = new Scripted([docReply(overPriced()), ...picks(), "Прийнято частково."]);
+    const graph = graphOver(db, model);
+    await run(graph, "t-r01");
+    await resume(graph, "t-r01", { action: "partial", lines: [0] });
+
+    expect(pendingReviews(db)).toEqual([]);
+    const state = await graph.getState(cfg("t-r01"));
+    expect(state.next).toEqual([]);
+  });
+
+  test("акт містить коди причин по рядках", async () => {
+    const { db } = await setup();
+    const model = new Scripted([docReply(overPriced()), ...picks(), "текст"]);
+    const graph = graphOver(db, model);
+    await run(graph, "t-r01");
+    await resume(graph, "t-r01", { action: "approve" });
+
+    const rows = db.prepare("SELECT line_idx, reason_code FROM discrepancy_line").all();
+    expect(rows).toEqual([{ line_idx: 2, reason_code: "price_above_protocol" }]);
+  });
+});
+
+describe("AC-8 — аляси народжуються з підтвердження людини", () => {
+  test("після approve аляси є, і наступний документ матчиться без LLM", async () => {
+    const { db } = await setup();
+    const overPriced = {
+      lines: LINES.map((l) => (l[3] === "MLK-006" ? [l[0], l[1], "49,90", l[3]] : l)),
+      total: "3793,60",
+    };
+
+    const first = new Scripted([docReply(overPriced), ...picks(), "текст акта"]);
+    const graph1 = graphOver(db, first);
+    await run(graph1, "t-first");
+    await resume(graph1, "t-first", { action: "approve" });
+    expect(db.prepare("SELECT count(*) n FROM sku_alias").get().n).toBe(4);
+
+    // Другий документ з тими самими назвами: модель кличеться лише на extract.
+    const second = new Scripted([docReply({ docNumber: "РН-5513" })]);
+    const out = await run(graphOver(db, second), "t-second");
+    expect(out.status).toBe("posted");
+    expect(second.prompts).toHaveLength(1);
+    expect(out.matched.every((m) => m.via === "alias")).toBe(true);
+  });
+});
+
+describe("AC-25/AC-26 — ідемпотентність", () => {
+  test("AC-25: той самий thread_id двічі не дає другої накладної", async () => {
+    const { db } = await setup();
+    const graph = graphOver(db, new Scripted([docReply(), ...picks()]));
+    const first = await run(graph, "t-same");
+    expect(first.status).toBe("posted");
+
+    // Той самий лист прийшов знову: thread_id той самий, модель уже не потрібна.
+    const again = await run(graph, "t-same");
+    expect(again.status).toBe("posted");
+    expect(db.prepare("SELECT count(*) n FROM receipt").get().n).toBe(1);
+  });
+
+  test("AC-26: той самий документ іншим каналом → duplicate, друга накладна не проходить", async () => {
+    const { db } = await setup();
+    await run(graphOver(db, new Scripted([docReply(), ...picks()])), "t-txt");
+
+    // Інший хеш (лист і xlsx), той самий (ЄДРПОУ, номер, дата).
+    const out = await run(graphOver(db, new Scripted([docReply(), ...picks()])), "t-xlsx");
+    expect(out.status).toBe("duplicate");
+    expect(db.prepare("SELECT count(*) n FROM receipt").get().n).toBe(1);
+  });
+});
+
+describe("AC-3 — ретрай витягу ребром графа", () => {
+  test("перша відповідь смітник, друга валідна → граф доїжджає до proведення", async () => {
+    const { db } = await setup();
+    const model = new Scripted(["Доброго дня, уточніть питання", docReply(), ...picks()]);
+    const out = await run(graphOver(db, model), "t-retry");
+    expect(out.attempt).toBe(2);
+    expect(out.status).toBe("posted");
+  });
+
+  test("обидві спроби провалились → review з extract_failed, накладної немає", async () => {
+    const { db } = await setup();
+    const model = new Scripted(["ні", "знову ні"]);
+    const out = await run(graphOver(db, model), "t-failed");
+
+    const paused = interruptOf(out);
+    expect(paused.issues.map((i) => i.code)).toEqual(["extract_failed"]);
+    expect(paused.docNumber).toBeNull();
+    expect(pendingReviews(db)).toHaveLength(1);
+  });
+
+  test("нечитабельний документ навіть після approve не проводиться", async () => {
+    const { db } = await setup();
+    const model = new Scripted(["ні", "знову ні", "Не змогли прочитати накладну."]);
+    const graph = graphOver(db, model);
+    await run(graph, "t-failed");
+    const out = await resume(graph, "t-failed", { action: "approve" });
+
+    expect(receiptOf(db, "t-failed")).toBeNull();
+    expect(out.actId).toBeGreaterThan(0);
+    expect(pendingReviews(db)).toEqual([]);
+  });
+
+  test("третьої спроби не буде", async () => {
+    const { db } = await setup();
+    const model = new Scripted(["ні", "знову ні"]);
+    await run(graphOver(db, model), "t-limit");
+    expect(model.prompts).toHaveLength(2);
+  });
+});
+
+describe("AC-27 — падіння шлюзу", () => {
+  test("помилка мережі летить нагору, а стан лишається відновлюваним", async () => {
+    const { db } = await setup();
+    const model = new Scripted([docReply(), new Error("502 Bad Gateway")]);
+    const graph = graphOver(db, model);
+
+    await expect(run(graph, "t-boom")).rejects.toThrow("502 Bad Gateway");
+
+    // Витяг уже в чекпойнті: повтор не починає з нуля, а йде на match.
+    const state = await graph.getState(cfg("t-boom"));
+    expect(state.values.doc.docNumber).toBe("РН-5512");
+    expect(state.next).toEqual(["match"]);
+    expect(receiptOf(db, "t-boom")).toBeNull();
+  });
+});
+
+describe("AC-28 — інший процес бачить тред", () => {
+  test("нове з'єднання з тим самим файлом БД відновлює приймання", async () => {
+    const { db, dbFile } = await setup({ file: true });
+    const overPriced = {
+      lines: LINES.map((l) => (l[3] === "MLK-006" ? [l[0], l[1], "49,90", l[3]] : l)),
+      total: "3793,60",
+    };
+    await run(graphOver(db, new Scripted([docReply(overPriced), ...picks()])), "t-cross");
+    db.close();
+
+    // «Другий процес»: інший DatabaseSync, інший граф, той самий файл.
+    const db2 = openDb(dbFile);
+    expect(pendingReviews(db2).map((r) => r.threadId)).toEqual(["t-cross"]);
+
+    const graph2 = graphOver(db2, new Scripted(["Просимо погодити ціну протоколом."]));
+    const state = await graph2.getState(cfg("t-cross"));
+    expect(state.next).toEqual(["review"]);
+
+    const out = await resume(graph2, "t-cross", { action: "approve" });
+    expect(out.status).toBe("posted");
+    expect(receiptOf(db2, "t-cross").totalNetKop).toBe(379360);
+    expect(pendingReviews(db2)).toEqual([]);
+  });
+});
+
+describe("межі", () => {
+  test("невідомий магазин: проводити нікуди навіть після approve", async () => {
+    const { db } = await setup();
+    const model = new Scripted([
+      docReply({ storeCode: "KV-XXX" }),
+      ...picks(),
+      "Уточніть магазин-отримувач.",
+    ]);
+    const graph = graphOver(db, model);
+    const out = await run(graph, "t-store");
+    expect(interruptOf(out).issues.map((i) => i.code)).toContain("unknown_store");
+
+    const done = await resume(graph, "t-store", { action: "approve" });
+    expect(receiptOf(db, "t-store")).toBeNull();
+    expect(done.status).toBe("rejected");
+  });
+
+  test("неблокуюча розбіжність проводиться сама, але акт усе одно пишеться", async () => {
+    const { db } = await setup();
+    const short = {
+      lines: LINES.map((l) => (l[3] === "MLK-001" ? [l[0], 18, l[2], l[3]] : l)),
+      total: "3505,00",
+    };
+    const model = new Scripted([docReply(short), ...picks(), "Повідомляємо про недопоставку."]);
+    const out = await run(graphOver(db, model), "t-under");
+
+    expect(out.status).toBe("posted");
+    expect(out.issues.map((i) => i.code)).toEqual(["under_delivery"]);
+    expect(db.prepare("SELECT count(*) n FROM discrepancy_act").get().n).toBe(1);
+  });
+
+  test("ціни з ПДВ: у накладну лягає сума без ПДВ", async () => {
+    const { db } = await setup();
+    const skus = allSkus(db);
+    const vat = (code) => skus.find((s) => s.code === code).vatRate;
+    expect(vat("MLK-001")).toBe(20);
+
+    const withVat = {
+      lines: LINES.map(([name, qty, , code]) => {
+        const net = { "MLK-001": 3890, "MLK-004": 2640, "MLK-006": 4760, "MLK-011": 6200 }[code];
+        const gross = Math.round((net * 120) / 100);
+        return [name, qty, `${Math.floor(gross / 100)},${String(gross % 100).padStart(2, "0")}`, code];
+      }),
+      total: null,
+    };
+    const model = new Scripted([docReply({ ...withVat, pricesIncludeVat: true }), ...picks()]);
+    const out = await run(graphOver(db, model), "t-vat");
+
+    expect(out.issues).toEqual([]);
+    expect(receiptOf(db, "t-vat").totalNetKop).toBe(373840);
+  });
+});

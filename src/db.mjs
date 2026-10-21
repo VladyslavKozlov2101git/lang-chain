@@ -282,3 +282,195 @@ export function protocolFor(db, supplierId, skuId, onDate) {
     .get(supplierId, skuId, onDate, onDate);
   return row ? row.price_net_kop : null;
 }
+
+const SKU_COLUMNS = `
+  SELECT id, code, name, unit,
+         pack_size AS packSize, vat_rate AS vatRate,
+         shelf_life_days AS shelfLifeDays, min_shelf_pct AS minShelfPct
+    FROM sku`;
+
+export const allSkus = (db) => db.prepare(SKU_COLUMNS).all();
+
+/** Аляс читається тільки за парою (постачальник, нормалізована назва). */
+export function aliasFor(db, supplierId, normalized) {
+  const row = db
+    .prepare("SELECT sku_id FROM sku_alias WHERE supplier_id=? AND raw_name_normalized=?")
+    .get(supplierId, normalized);
+  return row ? row.sku_id : null;
+}
+
+/** Пишеться лише з підтвердження людини: аляс із рішення LLM закріпив би галюцинацію. */
+export function putAlias(db, supplierId, normalized, skuId, now = new Date().toISOString()) {
+  db.prepare(
+    `INSERT INTO sku_alias(supplier_id, raw_name_normalized, sku_id, created_at)
+     VALUES(?,?,?,?)
+     ON CONFLICT(supplier_id, raw_name_normalized) DO UPDATE SET sku_id=excluded.sku_id`,
+  ).run(supplierId, normalized, skuId, now);
+}
+
+/**
+ * Усе, що потрібно validate, одним читанням. Заявка шукається за номером із
+ * документа, а якщо постачальник його не вказав — беремо останню відкриту на цю
+ * пару магазин+постачальник: саме так це робить товарознавець.
+ */
+export function loadContext(db, { edrpou, storeCode, poNumber, docDate, today }) {
+  const supplier = edrpou
+    ? (db.prepare("SELECT id, name, edrpou FROM supplier WHERE edrpou=?").get(edrpou) ?? null)
+    : null;
+  const store = storeCode
+    ? (db.prepare("SELECT id, code, name FROM store WHERE code=?").get(storeCode) ?? null)
+    : null;
+
+  let po = null;
+  if (supplier && store) {
+    const row = poNumber
+      ? db
+          .prepare("SELECT id, number FROM po WHERE number=? AND store_id=? AND supplier_id=?")
+          .get(poNumber, store.id, supplier.id)
+      : db
+          .prepare(
+            `SELECT id, number FROM po WHERE store_id=? AND supplier_id=?
+              ORDER BY created_at DESC, id DESC LIMIT 1`,
+          )
+          .get(store.id, supplier.id);
+    if (row) {
+      po = {
+        ...row,
+        lines: db.prepare("SELECT sku_id AS skuId, qty FROM po_line WHERE po_id=?").all(row.id),
+      };
+    }
+  }
+
+  const skus = allSkus(db);
+  return {
+    supplier,
+    store,
+    po,
+    skus,
+    skuById: new Map(skus.map((sku) => [sku.id, sku])),
+    protocolFor: (skuId) =>
+      supplier ? protocolFor(db, supplier.id, skuId, docDate) : null,
+    today: today ?? new Date().toISOString().slice(0, 10),
+  };
+}
+
+/** Другий рівень ідемпотентності вистрілив: документ уже проведено. */
+export class DuplicateReceipt extends Error {
+  constructor(key) {
+    super(`документ уже проведено: ${key}`);
+    this.name = "DuplicateReceipt";
+  }
+}
+
+const nowIso = () => new Date().toISOString();
+
+/**
+ * Проведення однією транзакцією: накладна, її рядки і аляси, підтверджені людиною.
+ * Аляси пишуться тут, а не у вузлі review, щоб або все лягло, або нічого.
+ *
+ * @param lines   [{ skuId, rawName, qty, priceNetKop }] — лише схвалені рядки
+ * @param aliases [{ supplierId, normalized, skuId }]
+ * @throws DuplicateReceipt на UNIQUE(supplier_id, doc_number, doc_date)
+ */
+export function commitReceipt(
+  db,
+  { threadId, supplierId, storeId, docNumber, docDate, status, lines, aliases = [], now = nowIso() },
+) {
+  return tx(db, () => {
+    const totalNetKop = lines.reduce((acc, l) => acc + Math.round(l.priceNetKop * l.qty), 0);
+    let receiptId;
+    try {
+      const info = db
+        .prepare(
+          `INSERT INTO receipt(thread_id,supplier_id,store_id,doc_number,doc_date,
+                               total_net_kop,status,created_at)
+           VALUES(?,?,?,?,?,?,?,?)`,
+        )
+        .run(threadId, supplierId, storeId, docNumber, docDate, totalNetKop, status, now);
+      receiptId = Number(info.lastInsertRowid);
+    } catch (e) {
+      if (String(e.message).includes("UNIQUE constraint failed: receipt.supplier_id")) {
+        throw new DuplicateReceipt(`${docNumber} від ${docDate}`);
+      }
+      throw e;
+    }
+
+    const insertLine = db.prepare(
+      `INSERT INTO receipt_line(receipt_id,sku_id,raw_name,qty,price_net_kop) VALUES(?,?,?,?,?)`,
+    );
+    for (const l of lines) insertLine.run(receiptId, l.skuId, l.rawName, l.qty, l.priceNetKop);
+    for (const a of aliases) putAlias(db, a.supplierId, a.normalized, a.skuId, now);
+
+    return { receiptId, totalNetKop };
+  });
+}
+
+/** Акт розбіжностей: текст для постачальника плюс рядки з кодами причин. */
+export function writeAct(db, { threadId, receiptId = null, message, issues, now = nowIso() }) {
+  return tx(db, () => {
+    const info = db
+      .prepare(
+        `INSERT INTO discrepancy_act(thread_id,receipt_id,message,created_at) VALUES(?,?,?,?)`,
+      )
+      .run(threadId, receiptId, message, now);
+    const actId = Number(info.lastInsertRowid);
+    const insert = db.prepare(
+      `INSERT INTO discrepancy_line(act_id,line_idx,raw_name,reason_code,detail) VALUES(?,?,?,?,?)`,
+    );
+    for (const issue of issues) {
+      insert.run(actId, issue.lineIdx, issue.rawName ?? null, issue.code, issue.detail ?? null);
+    }
+    return { actId };
+  });
+}
+
+/** Черга для CLI. Викликається перед interrupt, тому мусить бути ідемпотентною:
+ *  при resume тіло вузла виконується повторно. */
+export function enqueueReview(db, { threadId, storeCode, supplierName, docNumber, issuesCount, now = nowIso() }) {
+  db.prepare(
+    `INSERT INTO review_queue(thread_id,store_code,supplier_name,doc_number,issues_count,status,created_at)
+     VALUES(?,?,?,?,?,'pending',?)
+     ON CONFLICT(thread_id) DO UPDATE SET
+       issues_count=excluded.issues_count, store_code=excluded.store_code,
+       supplier_name=excluded.supplier_name, doc_number=excluded.doc_number`,
+  ).run(threadId, storeCode ?? null, supplierName ?? null, docNumber ?? null, issuesCount, now);
+}
+
+export const resolveReview = (db, threadId, status = "resolved") =>
+  db.prepare("UPDATE review_queue SET status=? WHERE thread_id=?").run(status, threadId);
+
+export const pendingReviews = (db) =>
+  db
+    .prepare(
+      `SELECT thread_id AS threadId, store_code AS storeCode, supplier_name AS supplierName,
+              doc_number AS docNumber, issues_count AS issuesCount, created_at AS createdAt
+         FROM review_queue WHERE status='pending' ORDER BY created_at, thread_id`,
+    )
+    .all();
+
+export const receiptOf = (db, threadId) =>
+  db
+    .prepare(
+      `SELECT id, doc_number AS docNumber, doc_date AS docDate,
+              total_net_kop AS totalNetKop, status
+         FROM receipt WHERE thread_id=?`,
+    )
+    .get(threadId) ?? null;
+
+/**
+ * Чим тред уже закінчився, якщо закінчився. Потрібно вузлу dedupe: завершений
+ * тред LangGraph залюбки проганяє заново з START, тому самого thread_id для
+ * ідемпотентності не досить.
+ */
+export function priorOutcome(db, threadId) {
+  const receipt = receiptOf(db, threadId);
+  const act = db
+    .prepare("SELECT id FROM discrepancy_act WHERE thread_id=? ORDER BY id LIMIT 1")
+    .get(threadId);
+  if (!receipt && !act) return null;
+  return {
+    receiptId: receipt?.id ?? null,
+    actId: act?.id ?? null,
+    status: receipt?.status ?? "rejected",
+  };
+}

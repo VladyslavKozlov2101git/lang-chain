@@ -23,7 +23,7 @@ const reply = (over = {}) =>
 
 const fake = (...responses) => new FakeListChatModel({ responses });
 
-/** Модель, яка запам'ятовує промпти: потрібно перевірити, що ретрай несе текст помилки. */
+/** Модель, яка запам'ятовує промпт: ретрай мусить несли текст попередньої помилки. */
 class Recorder {
   constructor(responses) {
     this.responses = responses;
@@ -37,12 +37,12 @@ class Recorder {
 }
 
 describe("AC-3 — витяг структури", () => {
-  test("валідний JSON з першої спроби", async () => {
-    const { doc, attempt } = await extract({ model: fake(reply()), text: "неважливо" });
-    expect(attempt).toBe(1);
+  test("валідний JSON розбирається повністю", async () => {
+    const { doc } = await extract({ model: fake(reply()), text: "неважливо" });
     expect(doc.docNumber).toBe("РН-5512");
     expect(doc.supplierEdrpou).toBe("31245678");
     expect(doc.storeCode).toBe("KV-LUK");
+    expect(doc.poNumber).toBe("PO-2026-1041");
     expect(doc.pricesIncludeVat).toBe(false);
     expect(doc.lines).toHaveLength(2);
   });
@@ -51,6 +51,7 @@ describe("AC-3 — витяг структури", () => {
     const { doc } = await extract({ model: fake(reply()), text: "неважливо" });
     expect(doc.lines.map((l) => l.priceKop)).toEqual([3890, 2640]);
     expect(doc.totalKop).toBe(373840);
+    // сирої ціни в стані не лишається, щоб ніхто не порахував гроші з рядка
     expect(doc.lines[0].price).toBeUndefined();
   });
 
@@ -60,79 +61,67 @@ describe("AC-3 — витяг структури", () => {
     expect(doc.docNumber).toBe("РН-5512");
   });
 
-  test("зламаний JSON з першої спроби, валідний з другої → attempt 2", async () => {
-    const { doc, attempt } = await extract({
-      model: fake("це не JSON, а вибачення", reply()),
-      text: "неважливо",
-    });
-    expect(attempt).toBe(2);
-    expect(doc.docNumber).toBe("РН-5512");
+  test("не JSON → ExtractError з причиною, а не порожній документ", async () => {
+    const promise = extract({ model: fake("Доброго дня! Уточніть, що саме треба."), text: "док" });
+    await expect(promise).rejects.toThrow(ExtractError);
+    await expect(promise).rejects.toThrow("JSON-об'єкта");
   });
 
-  test("ретрай несе моделі текст попередньої помилки", async () => {
-    const model = new Recorder(["зовсім не те", reply()]);
-    await extract({ model, text: "документ" });
-    expect(model.prompts).toHaveLength(2);
-    expect(model.prompts[0]).not.toContain("Попередня спроба");
-    expect(model.prompts[1]).toContain("Попередня спроба не підійшла");
-    expect(model.prompts[1]).toContain("JSON-об'єкта");
+  test("feedback попередньої спроби доїжджає в промпт", async () => {
+    const clean = new Recorder([reply()]);
+    await extract({ model: clean, text: "документ" });
+    expect(clean.prompts[0]).not.toContain("Попередня спроба");
+
+    const retried = new Recorder([reply()]);
+    await extract({ model: retried, text: "документ", feedback: "docDate: дата у форматі YYYY-MM-DD" });
+    expect(retried.prompts[0]).toContain("Попередня спроба не підійшла");
+    expect(retried.prompts[0]).toContain("docDate");
   });
 
-  test("помилку схеми теж видно в ретраї, з назвою поля", async () => {
-    const model = new Recorder([reply({ docDate: "21.10.2026" }), reply()]);
-    const { attempt } = await extract({ model, text: "документ" });
-    expect(attempt).toBe(2);
-    expect(model.prompts[1]).toContain("docDate");
-  });
-
-  test("усі спроби витрачено → ExtractError, а не тихий порожній результат", async () => {
-    const model = fake("ні", "знову ні");
-    await expect(extract({ model, text: "документ" })).rejects.toThrow(ExtractError);
-    await expect(extract({ model, text: "документ" })).rejects.toMatchObject({ attempts: 2 });
-  });
-
-  test("ліміт спроб дотримується: третього виклику не буде", async () => {
-    const model = new Recorder(["ні", "ні", reply()]);
-    await expect(extract({ model, text: "документ", attempts: 2 })).rejects.toThrow(ExtractError);
-    expect(model.prompts).toHaveLength(2);
+  test("у промпті є сам документ", async () => {
+    const model = new Recorder([reply()]);
+    await extract({ model, text: "Накладна № РН-5512 від 21.10.2026" });
+    expect(model.prompts[0]).toContain("Накладна № РН-5512");
   });
 });
 
 describe("AC-3 — межі схеми", () => {
-  test("документ без рядків не проходить", async () => {
-    const model = fake(reply({ lines: [] }), reply({ lines: [] }));
-    await expect(extract({ model, text: "документ" })).rejects.toThrow(ExtractError);
-  });
+  const rejects = async (over, expected) => {
+    const promise = extract({ model: fake(reply(over)), text: "документ" });
+    await expect(promise).rejects.toThrow(ExtractError);
+    await expect(promise).rejects.toThrow(expected);
+  };
 
-  test("ЄДРПОУ не з цифр відхиляється", async () => {
-    const model = new Recorder([reply({ supplierEdrpou: "ТОВ Молочний Дім" }), reply()]);
-    const { attempt } = await extract({ model, text: "документ" });
-    expect(attempt).toBe(2);
-    expect(model.prompts[1]).toContain("supplierEdrpou");
-  });
+  test("дата не в ISO відхиляється з назвою поля", () => rejects({ docDate: "21.10.2026" }, "docDate"));
+
+  test("ЄДРПОУ не з цифр відхиляється", () =>
+    rejects({ supplierEdrpou: "ТОВ Молочний Дім" }, "supplierEdrpou"));
+
+  test("документ без рядків відхиляється", () => rejects({ lines: [] }, "lines"));
+
+  test("нечитабельна ціна — це помилка витягу, а не нуль у накладній", () =>
+    rejects({ lines: [{ ...LINES[0], price: "за домовленістю" }] }, "за домовленістю"));
+
+  test("нечитабельний підсумок теж", () => rejects({ total: "уточнимо" }, "уточнимо"));
 
   test("AC-2: магазину в документі немає → storeCode null, а не вигаданий код", async () => {
     const { doc } = await extract({ model: fake(reply({ storeCode: null })), text: "документ" });
     expect(doc.storeCode).toBeNull();
   });
 
-  test("нечитабельна ціна — це помилка витягу, а не нуль у накладній", async () => {
-    const broken = reply({ lines: [{ ...LINES[0], price: "за домовленістю" }] });
-    const model = new Recorder([broken, reply()]);
-    const { attempt } = await extract({ model, text: "документ" });
-    expect(attempt).toBe(2);
-    expect(model.prompts[1]).toContain("за домовленістю");
-  });
-
   test("qty рядком модель теж іноді віддає — приводимо до числа", async () => {
-    const asText = reply({ lines: [{ ...LINES[0], qty: "24" }] });
-    const { doc } = await extract({ model: fake(asText), text: "документ" });
+    const { doc } = await extract({
+      model: fake(reply({ lines: [{ ...LINES[0], qty: "24" }] })),
+      text: "документ",
+    });
     expect(doc.lines[0].qty).toBe(24);
   });
 
   test("термін придатності з рядка доїжджає до стану", async () => {
-    const withDate = reply({ lines: [{ ...LINES[0], expiresOn: "2026-10-23" }] });
-    const { doc } = await extract({ model: fake(withDate), text: "документ" });
+    const { doc } = await extract({
+      model: fake(reply({ lines: [{ ...LINES[0], expiresOn: "2026-10-23" }] })),
+      text: "документ",
+    });
     expect(doc.lines[0].expiresOn).toBe("2026-10-23");
   });
 });

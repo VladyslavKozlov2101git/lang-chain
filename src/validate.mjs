@@ -10,8 +10,11 @@ export const CONFIDENCE_MIN = 0.8;
 
 const DAY = 86_400_000;
 
-/** Протокольна ціна без ПДВ → ціна з ПДВ. */
+/** Протокольна ціна без ПДВ → ціна з ПДВ. Для порівняння: так воно точне. */
 export const grossOf = (netKop, vatRate) => Math.round((netKop * (100 + vatRate)) / 100);
+
+/** Ціна з ПДВ → без ПДВ. Для запису в накладну, де без округлення не обійтися. */
+export const netOf = (grossKop, vatRate) => Math.round((grossKop * 100) / (100 + vatRate));
 
 const daysBetween = (from, to) => (Date.parse(to) - Date.parse(from)) / DAY;
 
@@ -31,9 +34,12 @@ export function validate({ doc, matched = [], ctx }) {
   const add = (lineIdx, code, detail, blocking = true) =>
     issues.push({ lineIdx, code, detail, blocking });
 
-  // AC-2: без магазину-отримувача приймати нікуди.
+  // AC-2: без магазину-отримувача приймати нікуди, без постачальника — ні від кого.
   if (!ctx.store) {
     add(null, "unknown_store", `магазин-отримувач не визначений: ${doc.storeCode ?? "не вказано"}`);
+  }
+  if (!ctx.supplier) {
+    add(null, "unknown_supplier", `постачальник не визначений: ${doc.supplierEdrpou ?? "ЄДРПОУ не вказано"}`);
   }
 
   // R9 рівня документа: заявки немає взагалі, тобто непрошене все.

@@ -14,10 +14,9 @@ import { z } from "zod";
 import { parseKop } from "./text.mjs";
 
 export class ExtractError extends Error {
-  constructor(message, { attempts, lastReply } = {}) {
+  constructor(message, { lastReply } = {}) {
     super(message);
     this.name = "ExtractError";
-    this.attempts = attempts;
     this.lastReply = lastReply;
   }
 }
@@ -124,33 +123,29 @@ function toKop(parsed) {
 }
 
 /**
- * @param model    будь-який чат-модель LangChain; у тестах — FakeListChatModel
- * @param text     нормалізований текст документа
- * @param attempts скільки разів питати; кожна наступна спроба отримує текст помилки
- * @returns { doc, attempt }
- * @throws ExtractError коли всі спроби витрачено (AC-3 → review з extract_failed)
+ * Одна спроба. Ретраєм керує граф: ребро `extract → extract` із попередньою
+ * помилкою в `feedback`. Так кожна спроба лягає в чекпойнт окремо, і падіння
+ * шлюзу на другій не губить першу.
+ *
+ * @param model     будь-яка чат-модель LangChain; у тестах — FakeListChatModel
+ * @param text      нормалізований текст документа
+ * @param feedback  текст помилки попередньої спроби, або ""
+ * @returns { doc }
+ * @throws ExtractError якщо відповідь не стала валідним документом
  */
-export async function extract({ model, text, attempts = 2 }) {
-  let lastError = "";
-  let lastReply = "";
+export async function extract({ model, text, feedback = "" }) {
+  const retry = feedback
+    ? `\n\nПопередня спроба не підійшла: ${feedback}\nВиправ і віддай лише JSON.`
+    : "";
+  const prompt = `${INSTRUCTIONS}${retry}\n\nДокумент:\n"""\n${text}\n"""`;
 
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    const retry = lastError
-      ? `\n\nПопередня спроба не підійшла: ${lastError}\nВиправ і віддай лише JSON.`
-      : "";
-    const prompt = `${INSTRUCTIONS}${retry}\n\nДокумент:\n"""\n${text}\n"""`;
-
-    lastReply = textOf(await model.invoke(prompt));
-    try {
-      const parsed = DocSchema.parse(jsonFrom(lastReply));
-      return { doc: toKop(parsed), attempt };
-    } catch (e) {
-      lastError = e instanceof z.ZodError ? zodMessage(e) : e.message;
-      console.error(`[extract] спроба ${attempt}/${attempts} не вдалася: ${lastError}`);
-    }
+  const reply = textOf(await model.invoke(prompt));
+  try {
+    return { doc: toKop(DocSchema.parse(jsonFrom(reply))) };
+  } catch (e) {
+    const message = e instanceof z.ZodError ? zodMessage(e) : e.message;
+    throw new ExtractError(message, { lastReply: reply });
   }
-
-  throw new ExtractError(lastError, { attempts, lastReply });
 }
 
 const zodMessage = (error) =>
