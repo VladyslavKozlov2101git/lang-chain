@@ -125,3 +125,32 @@ describe("AC-3 — межі схеми", () => {
     expect(doc.lines[0].expiresOn).toBe("2026-10-23");
   });
 });
+
+describe("примітки постачальника", () => {
+  test("примітка рядка й примітка документа доїжджають у стан", async () => {
+    const withNotes = reply({
+      note: "Машина буде о 6:30",
+      lines: [
+        { ...LINES[0], note: "недоливка по лінії, вийшло менше" },
+        { ...LINES[1], note: null },
+      ],
+    });
+    const { doc } = await extract({ model: fake(withNotes), text: "документ" });
+    expect(doc.note).toBe("Машина буде о 6:30");
+    expect(doc.lines[0].note).toBe("недоливка по лінії, вийшло менше");
+    expect(doc.lines[1].note).toBeNull();
+  });
+
+  test("без приміток поле є і дорівнює null, а не зникає", async () => {
+    const { doc } = await extract({ model: fake(reply()), text: "документ" });
+    expect(doc.note).toBeNull();
+    expect(doc.lines.every((l) => l.note === null)).toBe(true);
+  });
+
+  test("промпт просить переписати слова постачальника, а не вигадати", async () => {
+    const model = new Recorder([reply()]);
+    await extract({ model, text: "документ" });
+    expect(model.prompts[0]).toContain("на пробу");
+    expect(model.prompts[0]).toContain("нічого не вигадуй");
+  });
+});

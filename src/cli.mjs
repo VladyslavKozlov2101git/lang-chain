@@ -94,16 +94,21 @@ function printPause(paused, log) {
     else byLine.set(issue.lineIdx, [...(byLine.get(issue.lineIdx) ?? []), issue]);
   }
 
+  // Примітка постачальника — перше, що треба прочитати: без неї розбіжність
+  // виглядає помилкою там, де є пояснення.
+  if (paused.note) log(`  постачальник пише: «${paused.note}»\n`);
+
   if (paused.lines.length) {
     log(`  ${pad("№", 3)}${pad("Товар", 38)}${pad("К-ть", 7)}${pad("Ціна", 10)}Розбіжність`);
     paused.lines.forEach((line, idx) => {
       const issues = byLine.get(idx) ?? [];
-      const note = issues.length
+      const why = issues.length
         ? issues.map((i) => `${reasonText(i.code)}${i.blocking ? "" : " (не блокує)"}`).join("; ")
         : "—";
       log(
-        `  ${pad(idx + 1, 3)}${pad(line.rawName, 38)}${pad(line.qty, 7)}${pad(formatUah(line.priceKop), 10)}${note}`,
+        `  ${pad(idx + 1, 3)}${pad(line.rawName, 38)}${pad(line.qty, 7)}${pad(formatUah(line.priceKop), 10)}${why}`,
       );
+      if (line.note) log(`  ${" ".repeat(3)}↳ постачальник: «${line.note}»`);
     });
   }
 

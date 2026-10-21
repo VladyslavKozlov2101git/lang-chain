@@ -149,6 +149,10 @@ export function buildGraph({ model, db, today, checkpointer }) {
       docDate: state.doc?.docDate ?? null,
       storeCode: state.doc?.storeCode ?? null,
       supplierName: ctx?.supplier?.name ?? null,
+      // Примітка постачальника їде разом із розбіжностями: без неї «позиції немає
+      // в заявці» читається як помилка там, де постачальник привіз товар на пробу
+      // і прямо про це написав.
+      note: state.doc?.note ?? null,
       lines: state.doc?.lines ?? [],
       issues: state.issues ?? [],
     });

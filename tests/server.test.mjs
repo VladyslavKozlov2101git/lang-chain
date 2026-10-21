@@ -210,6 +210,16 @@ describe("прогін і рішення", () => {
     expect(body.issues.map((i) => i.code)).toEqual(["price_above_protocol"]);
   });
 
+  test("AC-31: тред із черги несе оригінал листа — шукати документ заново не треба", async () => {
+    const db = seeded();
+    const base = await listen({ db, model: new Scripted([docReply(overPriced()), ...picks()]) });
+    const intake = await post(base, "/api/intake", { file: "r01-cina-vyshche.txt" });
+
+    const { body } = await get(base, `/api/thread?id=${intake.body.threadId}`);
+    expect(body.letter).toContain("Накладна № РН-5540");
+    expect(body.letter).toContain("піднялась ціна у виробника");
+  });
+
   test("треда немає → 404", async () => {
     const base = await listen({ db: seeded(), model: new Scripted([]) });
     expect((await get(base, "/api/thread?id=вигадка")).status).toBe(404);

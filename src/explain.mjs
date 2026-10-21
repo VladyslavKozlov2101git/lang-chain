@@ -55,6 +55,17 @@ function sums(doc, acceptedTotalKop) {
   return out;
 }
 
+/** Слова постачальника з листа. Не факти — але лист-відповідь, який їх ігнорує,
+ *  виглядає так, ніби його писали не читавши. */
+function notes(doc) {
+  const out = [];
+  if (doc?.note) out.push(`загальна: «${doc.note}»`);
+  (doc?.lines ?? []).forEach((line, i) => {
+    if (line.note) out.push(`рядок ${i + 1} (${line.rawName}): «${line.note}»`);
+  });
+  return out;
+}
+
 const fallback = (doc, issues, accepted, acceptedTotalKop) =>
   [
     `Акт розбіжностей до накладної ${doc?.docNumber ?? "без номера"} від ${doc?.docDate ?? "—"}.`,
@@ -65,6 +76,7 @@ const fallback = (doc, issues, accepted, acceptedTotalKop) =>
       ? `Прийнято рядків: ${accepted.map((i) => i + 1).join(", ")}.`
       : "Приймання не відбулося.",
     ...sums(doc, acceptedTotalKop),
+    ...(notes(doc).length ? ["", "Ваші примітки до документа:", ...notes(doc)] : []),
   ].join("\n");
 
 /**
@@ -89,6 +101,7 @@ ${table}
 
 ${accepted.length ? `Прийнято рядків: ${accepted.map((i) => i + 1).join(", ")}.` : "Приймання не відбулося."}
 ${sums(doc, acceptedTotalKop).join("\n")}
+${notes(doc).length ? `\nЩо постачальник написав сам у листі (його слова, не перевірені):\n${notes(doc).join("\n")}\n\nЯкщо його пояснення стосується розбіжності — згадай його, щоб лист не виглядав так, ніби ти листа не читав. Але погодженим це пояснення не робить: ціну погоджують протоколом, а не листом.` : ""}
 
 Вимоги: українською, ділово й без води, 4–8 рядків. Перелічи, що саме не зійшлося,
 і попроси надіслати виправлений документ або погодити нову ціну протоколом.

@@ -51,7 +51,15 @@ export const docReply = ({ docNumber = "РН-5512", total = "3738,40", lines = L
     docDate: TODAY,
     pricesIncludeVat: false,
     total,
-    lines: lines.map(([rawName, qty, price]) => ({ rawName, qty, unit: "шт", price, expiresOn: null })),
+    // П'ятий елемент рядка, якщо він є, — примітка постачальника.
+    lines: lines.map(([rawName, qty, price, , note]) => ({
+      rawName,
+      qty,
+      unit: "шт",
+      price,
+      expiresOn: null,
+      note: note ?? null,
+    })),
     ...over,
   });
 

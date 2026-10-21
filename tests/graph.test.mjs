@@ -354,3 +354,56 @@ describe("межі", () => {
     expect(receiptOf(db, "t-vat").totalNetKop).toBe(373840);
   });
 });
+
+describe("AC-31 — примітки постачальника доїжджають до рішення", () => {
+  // Дірка, знайдена на живому прогоні: «позиції немає в заявці» читається як
+  // помилка там, де постачальник привіз товар на пробу і прямо про це написав.
+  const sample = () => ({
+    note: "Поклали ящик нового йогурта на пробу, ціна протокольна",
+    lines: [
+      ...LINES,
+      ["Йогурт суничний 2,5% 280г", 12, "25,40", "MLK-010", "на пробу, ціна протокольна"],
+    ],
+    total: "4043,20",
+  });
+
+  test("примітка документа й примітка рядка видні в паузі", async () => {
+    const { db } = await setup();
+    const lines = sample();
+    const model = new Scripted([docReply(lines), ...picks(lines.lines)]);
+    const out = await run(graphOver(db, model), "t-note");
+
+    const paused = interruptOf(out);
+    expect(paused.note).toBe("Поклали ящик нового йогурта на пробу, ціна протокольна");
+    expect(paused.lines[4].note).toBe("на пробу, ціна протокольна");
+    // Розбіжність усе одно блокуюча: пояснення не погоджує позицію.
+    expect(paused.issues.map((i) => i.code)).toContain("not_in_po");
+  });
+
+  test("примітка на валідацію не впливає — це слова, не факт", async () => {
+    const { db } = await setup();
+    const lines = sample();
+    const quiet = { ...lines, note: null, lines: lines.lines.map((l) => l.slice(0, 4)) };
+    const withNote = new Scripted([docReply(lines), ...picks(lines.lines)]);
+    const without = new Scripted([docReply(quiet), ...picks(quiet.lines)]);
+
+    const a = interruptOf(await run(graphOver(db, withNote), "t-with"));
+    const { db: db2 } = await setup();
+    const b = interruptOf(await run(graphOver(db2, without), "t-without"));
+
+    expect(a.issues.map((i) => i.code)).toEqual(b.issues.map((i) => i.code));
+  });
+
+  test("у листі постачальнику його ж примітка згадана", async () => {
+    const { db } = await setup();
+    const lines = sample();
+    const model = new Scripted([docReply(lines), ...picks(lines.lines), "текст акта"]);
+    const graph = graphOver(db, model);
+    await run(graph, "t-note-letter");
+    await resume(graph, "t-note-letter", { action: "partial", lines: [0, 1, 2, 3] });
+
+    const prompt = model.prompts.at(-1);
+    expect(prompt).toContain("на пробу, ціна протокольна");
+    expect(prompt).toContain("ціну погоджують протоколом");
+  });
+});

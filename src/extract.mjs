@@ -30,6 +30,8 @@ const Line = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .nullable(),
+  // `nullish`, а не `nullable`: старі відповіді без цього поля лишаються валідними.
+  note: z.string().nullish(),
 });
 
 export const DocSchema = z.object({
@@ -44,6 +46,7 @@ export const DocSchema = z.object({
   docDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "дата у форматі YYYY-MM-DD"),
   pricesIncludeVat: z.boolean(),
   total: z.union([z.string(), z.number()]).nullable(),
+  note: z.string().nullish(),
   lines: z.array(Line).min(1),
 });
 
@@ -56,9 +59,10 @@ const SHAPE = `{
   "docDate": "2026-10-21",
   "pricesIncludeVat": false,
   "total": "3738,40" | null,
+  "note": "загальна примітка постачальника" | null,
   "lines": [
     { "rawName": "Молоко пастеризоване 2,6% 900г п/е", "qty": 24, "unit": "шт",
-      "price": "38,90", "expiresOn": null }
+      "price": "38,90", "expiresOn": null, "note": "примітка про цю позицію" | null }
   ]
 }`;
 
@@ -74,6 +78,14 @@ const INSTRUCTIONS = `Ти оператор приймання товару в �
 - pricesIncludeVat: true лише якщо в документі прямо сказано, що ціни з ПДВ.
 - storeCode — код магазину-отримувача, як у документі. Немає — null.
 - Чого немає в документі — null. Рядків, яких немає, не додавай.
+
+Примітки. У листі часто є пояснення, без якого розбіжність виглядає помилкою:
+«на пробу», «ціна нова з 15.10», «недоливка по лінії», «термін короткий, беріть швидко».
+Це те, що потім читає людина, тому:
+- якщо пояснення стосується конкретної позиції — поклади його в note того рядка;
+- якщо воно загальне — у note документа;
+- переписуй словами постачальника, коротко, без своїх висновків;
+- нічого не вигадуй: немає пояснення — null.
 
 Схема:
 ${SHAPE}`;
@@ -102,6 +114,9 @@ function toKop(parsed) {
       unit: line.unit,
       priceKop,
       expiresOn: line.expiresOn,
+      // Слова постачальника, не факт: на валідацію не впливають ніколи, але
+      // без них «позиції немає в заявці» читається як помилка там, де це проба.
+      note: line.note ?? null,
     };
   });
   let totalKop = null;
@@ -112,7 +127,7 @@ function toKop(parsed) {
     }
   }
   const { total, ...rest } = parsed;
-  return { ...rest, totalKop, lines };
+  return { ...rest, note: parsed.note ?? null, totalKop, lines };
 }
 
 /**

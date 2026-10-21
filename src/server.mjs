@@ -176,6 +176,9 @@ export function createServer({ db, makeModel = createModel, today } = {}) {
         issues: state.values.issues ?? null,
         status: state.values.status ?? null,
         attempt: state.values.attempt ?? null,
+        // Оригінал листа лежить у чекпойнті, тому тред, відкритий із черги через
+        // годину, не змушує шукати документ заново.
+        letter: state.values.raw?.text ?? null,
       };
     },
 

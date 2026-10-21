@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { openDb, pendingReviews, receiptOf } from "../src/db.mjs";
 import { decisionFrom, main, parseArgs } from "../src/cli.mjs";
-import { docReply, overPriced, picks, Scripted, setup, TODAY } from "./helpers.mjs";
+import { docReply, LINES, overPriced, picks, Scripted, setup, TODAY } from "./helpers.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fixture = (name) => path.join(ROOT, "fixtures", "inbox", name);
@@ -85,6 +85,28 @@ describe("AC-29 — команди", () => {
     expect(text).toContain("49,90");
     expect(text).toContain("--lines 1,2");
     expect(receiptOf(openDb(dbFile), "x")).toBeNull();
+  });
+
+  test("AC-31: примітки постачальника видно в блоці рішень", async () => {
+    const { dbFile } = await setup({ file: true });
+    const lines = [
+      ...LINES,
+      ["Йогурт суничний 2,5% 280г", 12, "25,40", "MLK-010", "на пробу, ціна протокольна"],
+    ];
+    const model = new Scripted([
+      docReply({ note: "Поклали ящик нового йогурта на пробу", lines, total: "4043,20" }),
+      ...picks(lines),
+    ]);
+    const { code, text } = await runCli(["intake", fixture("r09-nenazvanyi-tovar.txt")], {
+      dbFile,
+      model,
+    });
+
+    expect(code).toBe(2);
+    expect(text).toContain("постачальник пише: «Поклали ящик нового йогурта на пробу»");
+    expect(text).toContain("↳ постачальник: «на пробу, ціна протокольна»");
+    // І розбіжність на місці: примітка пояснює, а не погоджує.
+    expect(text).toContain("позиції немає в заявці");
   });
 
   test("review показує застряглий тред — і це працює без моделі", async () => {
