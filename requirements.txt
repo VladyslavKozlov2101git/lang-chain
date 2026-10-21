@@ -1,4 +1,0 @@
-langchain>=1,<2
-langchain-openai
-langchain-text-splitters
-fastembed
