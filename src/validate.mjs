@@ -5,6 +5,8 @@
  * у ціні мусить бути відтворюваною й перевірною без мережі.
  */
 
+import { formatUah } from "./text.mjs";
+
 /** Нижче цього рівня впевненості матчингу рядок іде до людини (R8). */
 export const CONFIDENCE_MIN = 0.8;
 
@@ -94,13 +96,13 @@ export function validate({ doc, matched = [], ctx }) {
         add(
           idx,
           "price_above_protocol",
-          `${sku.code}: ${line.priceKop} коп проти протокольних ${limit} коп${vat}`,
+          `${sku.code}: ${formatUah(line.priceKop)} грн проти протокольних ${formatUah(limit)} грн${vat}`,
         );
       } else if (line.priceKop < limit) {
         add(
           idx,
           "price_below_protocol",
-          `${sku.code}: ${line.priceKop} коп нижче протокольних ${limit} коп${vat}`,
+          `${sku.code}: ${formatUah(line.priceKop)} грн нижче протокольних ${formatUah(limit)} грн${vat}`,
           false,
         );
       }
@@ -140,7 +142,11 @@ export function validate({ doc, matched = [], ctx }) {
   if (doc.totalKop != null) {
     const sum = doc.lines.reduce((acc, l) => acc + Math.round(l.priceKop * l.qty), 0);
     if (sum !== doc.totalKop) {
-      add(null, "total_mismatch", `сума рядків ${sum} коп, у документі ${doc.totalKop} коп`);
+      add(
+        null,
+        "total_mismatch",
+        `сума рядків ${formatUah(sum)} грн, у документі ${formatUah(doc.totalKop)} грн`,
+      );
     }
   }
 

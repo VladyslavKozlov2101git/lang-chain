@@ -185,7 +185,7 @@ describe("R10 — сума документа", () => {
   test("AC-17: сума рядків не збігається з підсумком → total_mismatch", () => {
     const issues = run(doc({ totalKop: 90000 }));
     expect(codes(issues)).toEqual(["total_mismatch"]);
-    expect(issues[0].detail).toContain("93360");
+    expect(issues[0].detail).toContain("933,60 грн");
   });
 
   test("AC-17: правильний підсумок претензій не викликає", () => {

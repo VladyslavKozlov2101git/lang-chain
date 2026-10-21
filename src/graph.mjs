@@ -30,7 +30,7 @@ import {
 import { explainIssues } from "./explain.mjs";
 import { extract, ExtractError } from "./extract.mjs";
 import { matchLines } from "./match.mjs";
-import { normalizeName } from "./text.mjs";
+import { formatUah, normalizeName } from "./text.mjs";
 import { blocking, netOf, validate } from "./validate.mjs";
 
 export const MAX_EXTRACT_ATTEMPTS = 2;
@@ -224,7 +224,7 @@ export function buildGraph({ model, db, today, checkpointer }) {
       });
       resolveReview(db, state.threadId);
       console.error(
-        `[commit] накладна #${receiptId}: рядків ${lines.length}, ${totalNetKop} коп без ПДВ` +
+        `[commit] накладна #${receiptId}: рядків ${lines.length}, ${formatUah(totalNetKop)} грн без ПДВ` +
           (aliases.length ? `, алясів +${aliases.length}` : ""),
       );
       return { receiptId, status: partial ? "partial" : "posted" };

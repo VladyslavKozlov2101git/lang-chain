@@ -196,8 +196,8 @@ describe("AC-8 — чого аляс НЕ вчить", () => {
     await resume(graph, "t-sums", { action: "partial", lines: [0, 1] });
 
     const prompt = model.prompts.at(-1);
-    expect(prompt).toContain("Сума за документом постачальника: 3793,60 грн без ПДВ.");
-    expect(prompt).toContain("Прийнято на суму: 1356,00 грн без ПДВ.");
+    expect(prompt).toContain("Сума за документом постачальника: 3 793,60 грн без ПДВ.");
+    expect(prompt).toContain("Прийнято на суму: 1 356,00 грн без ПДВ.");
   });
 });
 

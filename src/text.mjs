@@ -30,11 +30,13 @@ export function parseKop(raw) {
   return Number(int) * 100 + Number(frac.padEnd(2, "0"));
 }
 
-/** Копійки → "45,80" для виводу людині. */
+/** Копійки → "1 234,56" для виводу людині. Всередині системи гроші завжди цілі
+ *  копійки; гривні з розділювачем тисяч існують лише на межі з людиною. */
 export function formatUah(kop) {
   const sign = kop < 0 ? "-" : "";
   const abs = Math.abs(kop);
-  return `${sign}${Math.floor(abs / 100)},${String(abs % 100).padStart(2, "0")}`;
+  const hrn = String(Math.floor(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return `${sign}${hrn},${String(abs % 100).padStart(2, "0")}`;
 }
 
 // кг перед г, мл перед л — інакше коротша одиниця з'їсть довшу.

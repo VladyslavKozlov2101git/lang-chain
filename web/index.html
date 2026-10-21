@@ -67,7 +67,7 @@
   table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--dim); font-weight: 600; }
-  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   tr.bad td { background: color-mix(in oklab, var(--warn) 9%, transparent); }
   .why { color: var(--warn); font-size: 12.5px; }
   .why.soft { color: var(--dim); }
@@ -147,7 +147,12 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const uah = (kop) => kop == null ? "—" : (kop < 0 ? "-" : "") + Math.floor(Math.abs(kop) / 100) + "," + String(Math.abs(kop) % 100).padStart(2, "0");
+const uah = (kop) => {
+  if (kop == null) return "—";
+  const abs = Math.abs(kop);
+  const hrn = String(Math.floor(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return (kop < 0 ? "-" : "") + hrn + "," + String(abs % 100).padStart(2, "0");
+};
 const short = (t) => String(t ?? "").slice(0, 12);
 
 const api = async (route, body) => {
@@ -300,12 +305,12 @@ function renderPaused(paused) {
     </div>
     <p class="empty" style="margin-top:8px">Рядки з розбіжністю зняті з галочок — познач, якщо приймаєш їх теж.</p>`;
 
-  $("approve").onclick = () => decide({ action: "approve" });
-  $("reject").onclick = () => decide({ action: "reject" });
-  $("partial").onclick = () => decide({
+  $("approve").onclick = (e) => decide({ action: "approve" }, e.currentTarget);
+  $("reject").onclick = (e) => decide({ action: "reject" }, e.currentTarget);
+  $("partial").onclick = (e) => decide({
     action: "partial",
     lines: [...$("result").querySelectorAll("input:checked")].map((i) => Number(i.dataset.line)),
-  });
+  }, e.currentTarget);
   $("resultPanel").hidden = false;
 }
 
@@ -327,13 +332,14 @@ function renderFailure(result) {
     <p class="empty">Стан збережено на диску — витяг повторювати не доведеться.</p>
     <div class="row"><button class="primary" id="retry">Продовжити</button></div>`;
   state.thread = result.threadId;
-  $("retry").onclick = () => decide({});
+  $("retry").onclick = (e) => decide({}, e.currentTarget);
   $("resultPanel").hidden = false;
 }
 
 async function withBusy(button, fn) {
   const was = button?.textContent;
-  if (button) { button.disabled = true; button.textContent = "…"; }
+  const row = button ? [...button.parentElement.querySelectorAll("button")] : [];
+  if (button) { row.forEach((b) => (b.disabled = true)); button.textContent = "…"; }
   try {
     await fn();
   } catch (e) {
@@ -341,7 +347,7 @@ async function withBusy(button, fn) {
     $("result").innerHTML = `<p class="err">${esc(e.message)}</p>`;
     $("resultPanel").hidden = false;
   } finally {
-    if (button) { button.disabled = false; button.textContent = was; }
+    if (button) { row.forEach((b) => (b.disabled = false)); button.textContent = was; }
   }
 }
 
@@ -355,8 +361,8 @@ const show = (result) => {
 
 const runIntake = (file) => withBusy($("run"), async () => show(await api("/api/intake", { file })));
 
-const decide = (decision) =>
-  withBusy(null, async () => show(await api("/api/resume", { thread: state.thread, ...decision })));
+const decide = (decision, button) =>
+  withBusy(button, async () => show(await api("/api/resume", { thread: state.thread, ...decision })));
 
 async function openThread(thread) {
   await withBusy(null, async () => {

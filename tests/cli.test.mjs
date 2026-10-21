@@ -69,7 +69,7 @@ describe("AC-29 — команди", () => {
 
     expect(code).toBe(0);
     expect(text).toContain("проведено повністю");
-    expect(text).toContain("3738,40 грн без ПДВ");
+    expect(text).toContain("3 738,40 грн без ПДВ");
     expect(text).toContain("тред ");
   });
 
@@ -202,7 +202,7 @@ describe("AC-29 — команди", () => {
     expect(code).toBe(0);
     expect(text).toContain("xlsx:");
     expect(text).toContain("проведено повністю");
-    expect(text).toContain("5734,00 грн без ПДВ");
+    expect(text).toContain("5 734,00 грн без ПДВ");
   });
 
   test("AC-27: падіння шлюзу друкує команду відновлення, а не стектрейс", async () => {

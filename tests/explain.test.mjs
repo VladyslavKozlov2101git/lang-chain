@@ -15,7 +15,7 @@ const issues = [
   {
     lineIdx: 1,
     code: "price_above_protocol",
-    detail: "MLK-006: 4990 коп проти протокольних 4760 коп",
+    detail: "MLK-006: 49,90 грн проти протокольних 47,60 грн",
     blocking: true,
   },
   { lineIdx: 0, code: "under_delivery", detail: "MLK-001: привезли 24, заявлено 30", blocking: false },
@@ -33,10 +33,10 @@ describe("AC-24 — текст для постачальника", () => {
     await explainIssues({ model, doc, issues, accepted: [0], supplierName: "ТОВ «Молочний Дім»" });
     const prompt = model.prompts[0];
     expect(prompt).toContain("РН-5512");
-    expect(prompt).toContain("4990 коп проти протокольних 4760 коп");
+    expect(prompt).toContain("49,90 грн проти протокольних 47,60 грн");
     expect(prompt).toContain("не перераховуй");
     expect(prompt).toContain("Молочний Дім");
-    expect(prompt).toContain("3793,60");
+    expect(prompt).toContain("3 793,60");
   });
 
   test("модель відвалилась → детермінований текст, а не виняток", async () => {
@@ -56,7 +56,7 @@ describe("AC-24 — текст для постачальника", () => {
       const model = new Scripted(["текст"]);
       await explainIssues({ model, doc, issues, accepted: [0], acceptedTotalKop: 93360 });
       const prompt = model.prompts[0];
-      expect(prompt).toContain("Сума за документом постачальника: 3793,60 грн без ПДВ.");
+      expect(prompt).toContain("Сума за документом постачальника: 3 793,60 грн без ПДВ.");
       expect(prompt).toContain("Прийнято на суму: 933,60 грн без ПДВ.");
       expect(prompt).toContain("різні числа");
     });
@@ -69,7 +69,7 @@ describe("AC-24 — текст для постачальника", () => {
         accepted: [0],
         acceptedTotalKop: 93360,
       });
-      expect(message).toContain("Сума за документом постачальника: 3793,60 грн без ПДВ.");
+      expect(message).toContain("Сума за документом постачальника: 3 793,60 грн без ПДВ.");
       expect(message).toContain("Прийнято на суму: 933,60 грн без ПДВ.");
     });
 
@@ -81,7 +81,7 @@ describe("AC-24 — текст для постачальника", () => {
         issues,
         accepted: [],
       });
-      expect(model.prompts[0]).toContain("3793,60 грн з ПДВ.");
+      expect(model.prompts[0]).toContain("3 793,60 грн з ПДВ.");
     });
 
     test("нічого не прийнято → про прийняту суму ні слова", async () => {
@@ -113,7 +113,7 @@ describe("AC-24 — текст для постачальника", () => {
 describe("issueLines / reasonText", () => {
   test("рядки нумеруються з одиниці, неблокуючі позначені", () => {
     expect(issueLines(doc, issues)).toEqual([
-      "2. Сметана 20% 350г — ціна вище протоколу: MLK-006: 4990 коп проти протокольних 4760 коп",
+      "2. Сметана 20% 350г — ціна вище протоколу: MLK-006: 49,90 грн проти протокольних 47,60 грн",
       "1. Молоко пастеризоване 2,6% 900г п/е — недопоставка проти заявки (не блокує приймання): MLK-001: привезли 24, заявлено 30",
     ]);
   });
