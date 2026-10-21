@@ -1,0 +1,231 @@
+{
+  "_": "Золоті відповіді для fixtures/inbox. priceKop — копійки рівно як у документі (з ПДВ там, де pricesIncludeVat=true). sku — код, який мусить вибрати матчинг. poNumber у підрахунок точності не входить: у системи є запасний шлях (остання заявка на пару магазин+постачальник), тому його пропуск не ламає приймання — але в звіті він видимий.",
+
+  "cases": [
+    {
+      "id": "clean-01",
+      "fixture": "clean-01-molochka.txt",
+      "doc": {
+        "supplierEdrpou": "31245678",
+        "storeCode": "KV-LUK",
+        "poNumber": "PO-2026-1041",
+        "docNumber": "РН-5512",
+        "docDate": "2026-10-21",
+        "pricesIncludeVat": false,
+        "totalKop": 373840
+      },
+      "lines": [
+        { "rawName": "Молоко пастеризоване 2,6% 900г п/е", "qty": 24, "priceKop": 3890, "sku": "MLK-001" },
+        { "rawName": "Кефір 2,5% 450г", "qty": 16, "priceKop": 2640, "sku": "MLK-004" },
+        { "rawName": "Сметана 20% 350г", "qty": 24, "priceKop": 4760, "sku": "MLK-006" },
+        { "rawName": "Сир кисломолочний 9% 350г", "qty": 20, "priceKop": 6200, "sku": "MLK-011" }
+      ]
+    },
+    {
+      "id": "clean-02",
+      "fixture": "clean-02-hlib.txt",
+      "doc": {
+        "supplierEdrpou": "32871045",
+        "storeCode": "KV-LUK",
+        "poNumber": "PO-2026-1043",
+        "docNumber": "4471",
+        "docDate": "2026-10-21",
+        "pricesIncludeVat": false,
+        "totalKop": 202140
+      },
+      "lines": [
+        { "rawName": "Хліб пшеничний 650г", "qty": 30, "priceKop": 2450, "sku": "BRD-001" },
+        { "rawName": "Батон нарізний 450г", "qty": 24, "priceKop": 2840, "sku": "BRD-004" },
+        { "rawName": "Булочка з маком 80г", "qty": 48, "priceKop": 1260, "sku": "BRD-006" }
+      ]
+    },
+    {
+      "id": "clean-03-xlsx",
+      "fixture": "clean-03-ovochi.xlsx",
+      "doc": {
+        "supplierEdrpou": "39104523",
+        "storeCode": "KV-POD",
+        "poNumber": "PO-2026-1045",
+        "docNumber": "ВН-00817",
+        "docDate": "2026-10-21",
+        "pricesIncludeVat": false,
+        "totalKop": 573400
+      },
+      "lines": [
+        { "rawName": "Картопля біла", "qty": 150, "priceKop": 1420, "sku": "VEG-001" },
+        { "rawName": "Морква мита", "qty": 60, "priceKop": 1680, "sku": "VEG-002" },
+        { "rawName": "Помідори тепличні", "qty": 40, "priceKop": 6490, "sku": "VEG-007" }
+      ]
+    },
+    {
+      "id": "r01-price",
+      "fixture": "r01-cina-vyshche.txt",
+      "doc": {
+        "supplierEdrpou": "31245678",
+        "storeCode": "KV-LUK",
+        "poNumber": "PO-2026-1041",
+        "docNumber": "РН-5540",
+        "docDate": "2026-10-21",
+        "pricesIncludeVat": false,
+        "totalKop": 379360
+      },
+      "lines": [
+        { "rawName": "Молоко пастеризоване 2,6% 900г п/е", "qty": 24, "priceKop": 3890, "sku": "MLK-001" },
+        { "rawName": "Кефір 2,5% 450г", "qty": 16, "priceKop": 2640, "sku": "MLK-004" },
+        { "rawName": "Сметана 20% 350г", "qty": 24, "priceKop": 4990, "sku": "MLK-006" },
+        { "rawName": "Сир кисломолочний 9% 350г", "qty": 20, "priceKop": 6200, "sku": "MLK-011" }
+      ]
+    },
+    {
+      "id": "r03-protocol",
+      "fixture": "r03-protokol-prostrochenyi.txt",
+      "doc": {
+        "supplierEdrpou": "32871045",
+        "storeCode": "KV-TER",
+        "poNumber": "PO-2026-1044",
+        "docNumber": "4488",
+        "docDate": "2026-10-21",
+        "pricesIncludeVat": false,
+        "totalKop": 108400
+      },
+      "lines": [
+        { "rawName": "Хліб житньо-пшеничний 700г", "qty": 20, "priceKop": 2680, "sku": "BRD-002" },
+        { "rawName": "Хліб безглютеновий 400г", "qty": 8, "priceKop": 6850, "sku": "BRD-012" }
+      ]
+    },
+    {
+      "id": "r04-pack",
+      "fixture": "r04-nekratna-kilkist.txt",
+      "doc": {
+        "supplierEdrpou": "31245678",
+        "storeCode": "KV-LUK",
+        "poNumber": "PO-2026-1041",
+        "docNumber": "РН-5551",
+        "docDate": "2026-10-21",
+        "pricesIncludeVat": false,
+        "totalKop": 358280
+      },
+      "lines": [
+        { "rawName": "Молоко пастеризоване 2,6% 900г п/е", "qty": 20, "priceKop": 3890, "sku": "MLK-001" },
+        { "rawName": "Кефір 2,5% 450г", "qty": 16, "priceKop": 2640, "sku": "MLK-004" },
+        { "rawName": "Сметана 20% 350г", "qty": 24, "priceKop": 4760, "sku": "MLK-006" },
+        { "rawName": "Сир кисломолочний 9% 350г", "qty": 20, "priceKop": 6200, "sku": "MLK-011" }
+      ]
+    },
+    {
+      "id": "r05-over-xlsx",
+      "fixture": "r05-nad-zayavku.xlsx",
+      "doc": {
+        "supplierEdrpou": "39104523",
+        "storeCode": "KV-POD",
+        "poNumber": "PO-2026-1045",
+        "docNumber": "ВН-00823",
+        "docDate": "2026-10-21",
+        "pricesIncludeVat": false,
+        "totalKop": 616000
+      },
+      "lines": [
+        { "rawName": "Картопля біла", "qty": 180, "priceKop": 1420, "sku": "VEG-001" },
+        { "rawName": "Морква мита", "qty": 60, "priceKop": 1680, "sku": "VEG-002" },
+        { "rawName": "Помідори тепличні", "qty": 40, "priceKop": 6490, "sku": "VEG-007" }
+      ]
+    },
+    {
+      "id": "r07-shelf",
+      "fixture": "r07-termin.txt",
+      "doc": {
+        "supplierEdrpou": "31245678",
+        "storeCode": "KV-LUK",
+        "poNumber": "PO-2026-1041",
+        "docNumber": "РН-5562",
+        "docDate": "2026-10-21",
+        "pricesIncludeVat": false,
+        "totalKop": 373840
+      },
+      "lines": [
+        { "rawName": "Молоко пастеризоване 2,6% 900г п/е", "qty": 24, "priceKop": 3890, "sku": "MLK-001" },
+        { "rawName": "Кефір 2,5% 450г", "qty": 16, "priceKop": 2640, "sku": "MLK-004" },
+        { "rawName": "Сметана 20% 350г", "qty": 24, "priceKop": 4760, "sku": "MLK-006" },
+        { "rawName": "Сир кисломолочний 9% 350г", "qty": 20, "priceKop": 6200, "sku": "MLK-011", "expiresOn": "2026-10-23" }
+      ]
+    },
+    {
+      "id": "r09-not-in-po",
+      "fixture": "r09-nenazvanyi-tovar.txt",
+      "doc": {
+        "supplierEdrpou": "31245678",
+        "storeCode": "KV-LUK",
+        "poNumber": "PO-2026-1041",
+        "docNumber": "РН-5573",
+        "docDate": "2026-10-21",
+        "pricesIncludeVat": false,
+        "totalKop": 404320
+      },
+      "lines": [
+        { "rawName": "Молоко пастеризоване 2,6% 900г п/е", "qty": 24, "priceKop": 3890, "sku": "MLK-001" },
+        { "rawName": "Кефір 2,5% 450г", "qty": 16, "priceKop": 2640, "sku": "MLK-004" },
+        { "rawName": "Сметана 20% 350г", "qty": 24, "priceKop": 4760, "sku": "MLK-006" },
+        { "rawName": "Сир кисломолочний 9% 350г", "qty": 20, "priceKop": 6200, "sku": "MLK-011" },
+        { "rawName": "Йогурт суничний 2,5% 280г", "qty": 12, "priceKop": 2540, "sku": "MLK-010" }
+      ]
+    },
+    {
+      "id": "r10-total",
+      "fixture": "r10-suma-ne-shoditsya.txt",
+      "_": "Підсумок у документі навмисно неправильний: 3738,00 проти суми рядків 3738,40. Модель мусить переписати його як є, а не виправити.",
+      "doc": {
+        "supplierEdrpou": "31245678",
+        "storeCode": "KV-LUK",
+        "poNumber": "PO-2026-1041",
+        "docNumber": "РН-5584",
+        "docDate": "2026-10-21",
+        "pricesIncludeVat": false,
+        "totalKop": 373800
+      },
+      "lines": [
+        { "rawName": "Молоко пастеризоване 2,6% 900г п/е", "qty": 24, "priceKop": 3890, "sku": "MLK-001" },
+        { "rawName": "Кефір 2,5% 450г", "qty": 16, "priceKop": 2640, "sku": "MLK-004" },
+        { "rawName": "Сметана 20% 350г", "qty": 24, "priceKop": 4760, "sku": "MLK-006" },
+        { "rawName": "Сир кисломолочний 9% 350г", "qty": 20, "priceKop": 6200, "sku": "MLK-011" }
+      ]
+    },
+    {
+      "id": "dubl-clean-01",
+      "fixture": "dubl-clean-01.txt",
+      "doc": {
+        "supplierEdrpou": "31245678",
+        "storeCode": "KV-LUK",
+        "poNumber": "PO-2026-1041",
+        "docNumber": "РН-5512",
+        "docDate": "2026-10-21",
+        "pricesIncludeVat": false,
+        "totalKop": 373840
+      },
+      "lines": [
+        { "rawName": "Молоко пастеризоване 2,6% 900г п/е", "qty": 24, "priceKop": 3890, "sku": "MLK-001" },
+        { "rawName": "Кефір 2,5% 450г", "qty": 16, "priceKop": 2640, "sku": "MLK-004" },
+        { "rawName": "Сметана 20% 350г", "qty": 24, "priceKop": 4760, "sku": "MLK-006" },
+        { "rawName": "Сир кисломолочний 9% 350г", "qty": 20, "priceKop": 6200, "sku": "MLK-011" }
+      ]
+    },
+    {
+      "id": "pdv",
+      "fixture": "pdv-v-tsinah.txt",
+      "_": "Найтонший кейс: ціни з ПДВ 20%. Якщо модель поставить pricesIncludeVat=false, R1 спрацює фальшиво на всіх трьох рядках.",
+      "doc": {
+        "supplierEdrpou": "31245678",
+        "storeCode": "KV-POD",
+        "poNumber": "PO-2026-1042",
+        "docNumber": "РН-5595",
+        "docDate": "2026-10-21",
+        "pricesIncludeVat": true,
+        "totalKop": 626088
+      },
+      "lines": [
+        { "rawName": "Молоко пастеризоване 3,2% 900г", "qty": 18, "priceKop": 4980, "sku": "MLK-002" },
+        { "rawName": "Кефір 1% 900г", "qty": 12, "priceKop": 5304, "sku": "MLK-005" },
+        { "rawName": "Масло солодковершкове 82,5% 200г", "qty": 40, "priceKop": 11820, "sku": "MLK-013" }
+      ]
+    }
+  ]
+}

@@ -6,3 +6,4 @@ local_cache/
 .cache/
 *.db
 *.db-journal
+eval/last-run.json

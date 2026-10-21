@@ -8,6 +8,7 @@
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --silent",
     "seed": "node supply.mjs seed",
     "fixtures": "node fixtures/make-xlsx.mjs",
+    "eval": "node eval/run.mjs",
     "intake": "node supply.mjs intake",
     "resume": "node supply.mjs resume",
     "review": "node supply.mjs review"
