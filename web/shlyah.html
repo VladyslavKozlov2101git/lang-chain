@@ -211,6 +211,7 @@
   .doc .why { color: var(--warn); font-size: 12.5px; font-family: var(--display); }
   .doc .good { color: var(--ok); }
   .doc .lab { color: var(--dim); }
+  .doc td.said { font-style: italic; font-size: 12.5px; }
   .doc .seal {
     display: inline-block;
     border: 2px solid var(--ok);
@@ -357,7 +358,8 @@ const LETTER = `Від: ТОВ «Молочний Дім» <sales@molochnyi-dim.
 const LINES = [
   { name: "Молоко пастеризоване 2,6% 900г п/е", qty: 24, price: "38,90", sku: "MLK-001", conf: "0,96", ok: true },
   { name: "Кефір 2,5% 450г", qty: 16, price: "26,40", sku: "MLK-004", conf: "0,94", ok: true },
-  { name: "Сметана 20% 350г", qty: 24, price: "49,90", sku: "MLK-006", conf: "0,95", ok: false },
+  { name: "Сметана 20% 350г", qty: 24, price: "49,90", sku: "MLK-006", conf: "0,95", ok: false,
+    note: "ціна нова з 15.10, піднялась у виробника" },
   { name: "Сир кисломолочний 9% 350г", qty: 20, price: "62,00", sku: "MLK-011", conf: "0,93", ok: true },
 ];
 
@@ -410,7 +412,7 @@ const STEPS = [
   "pricesIncludeVat": false,
   "totalKop": 379360,
   "lines": [
-${LINES.map((l) => `    { "rawName": "${esc(l.name)}",\n      "qty": ${l.qty}, "priceKop": ${Number(l.price.replace(",", "")) } }`).join(",\n")}
+${LINES.map((l) => `    { "rawName": "${esc(l.name)}",\n      "qty": ${l.qty}, "priceKop": ${Number(l.price.replace(",", ""))}${l.note ? `,\n      "note": "${esc(l.note)}"` : ""} }`).join(",\n")}
   ]
 }</pre>`,
   },
@@ -471,17 +473,21 @@ MLK-006: 4990 коп проти протокольних 4760 коп</pre>`,
     note: "Одна блокуюча розбіжність — і рішення вже не машинне.",
     sees: [
       "Таблиця з позначеним третім рядком. Галочка з нього <b>знята</b>: дефолт безпечний.",
+      "<b>Коментар постачальника — окремою колонкою.</b> Без нього «ціна вище протоколу» виглядає помилкою там, де постачальник прямо написав, що ціна нова у виробника. Загальні примітки — над таблицею.",
       "Три кнопки: прийняти все, прийняти позначені, відмовити.",
     ],
     hood: [
       "<span class='code'>interrupt()</span> зберігає весь стан на диск і виходить. Процес може померти — рішення прийде іншим процесом, можливо через годину.",
       "Тред з'являється в черзі рішень. Запис у чергу стоїть <i>перед</i> паузою, тому мусить бути ідемпотентним: при відновленні тіло вузла виконується повторно.",
       "Без чекпойнтера на диску все це було б неможливе, і саме тому драйвер БД один для бізнес-даних і для стану графа.",
+      "Примітка — це слова постачальника, а не факт: на валідацію вона не впливає, і той самий документ із приміткою й без дає однакові розбіжності. Інакше протокол цін обходився б одним рядком у листі.",
     ],
     doc: () => `<h2>Що показано товарознавцю</h2><table>
-      <thead><tr><th>✓</th><th class="n">№</th><th>Рядок</th><th class="n">Ціна</th><th>Розбіжність</th></tr></thead>
+      <thead><tr><th>✓</th><th class="n">№</th><th>Рядок</th><th class="n">Ціна</th>
+        <th>Коментар постачальника</th><th>Розбіжність</th></tr></thead>
       <tbody>${rows((l, i) => `<tr class="${l.ok ? "" : "hit"}"><td>${l.ok ? "☑" : "☐"}</td><td class="n">${i + 1}</td>
         <td>${esc(l.name)}</td><td class="n">${l.price}</td>
+        <td class="said">${l.note ? esc(l.note) : '<span class="lab">—</span>'}</td>
         <td>${l.ok ? '<span class="lab">—</span>' : '<span class="why">ціна вище протоколу</span>'}</td></tr>`)}</tbody></table>
       <pre class="m" style="margin-top:10px">⏸ тред 4623d089563e… чекає рішення</pre>`,
   },

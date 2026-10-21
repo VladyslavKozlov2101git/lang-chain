@@ -82,6 +82,8 @@ describe("AC-29 — команди", () => {
     expect(text).toContain("Потрібне рішення");
     expect(text).toContain("Сметана 20% 350г");
     expect(text).toContain("ціна вище протоколу");
+    // Без приміток колонки немає взагалі.
+    expect(text).not.toContain("Коментар");
     expect(text).toContain("49,90");
     expect(text).toContain("--lines 1,2");
     expect(receiptOf(openDb(dbFile), "x")).toBeNull();
@@ -103,8 +105,10 @@ describe("AC-29 — команди", () => {
     });
 
     expect(code).toBe(2);
+    // Загальна примітка — над таблицею, примітка рядка — своєю колонкою.
     expect(text).toContain("постачальник пише: «Поклали ящик нового йогурта на пробу»");
-    expect(text).toContain("↳ постачальник: «на пробу, ціна протокольна»");
+    expect(text).toContain("Коментар");
+    expect(text).toMatch(/Йогурт суничний.*на пробу, ціна протокольна/);
     // І розбіжність на місці: примітка пояснює, а не погоджує.
     expect(text).toContain("позиції немає в заявці");
   });

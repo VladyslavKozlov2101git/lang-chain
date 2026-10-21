@@ -78,7 +78,13 @@ export function decisionFrom(args) {
   return null;
 }
 
-const pad = (text, width) => String(text ?? "").padEnd(width).slice(0, width);
+const clip = (text, width) => {
+  const s = String(text ?? "");
+  return s.length > width ? `${s.slice(0, width - 1)}…` : s;
+};
+// Обрізаємо на символ менше за колонку, щоб між стовпцями завжди лишався пробіл:
+// назва рівно в ширину колонки інакше зліплюється з наступним числом.
+const pad = (text, width) => clip(text, width - 1).padEnd(width);
 
 function printPause(paused, log) {
   const head = [paused.docNumber, paused.docDate && `від ${paused.docDate}`, paused.supplierName, paused.storeCode && `→ ${paused.storeCode}`]
@@ -99,16 +105,24 @@ function printPause(paused, log) {
   if (paused.note) log(`  постачальник пише: «${paused.note}»\n`);
 
   if (paused.lines.length) {
-    log(`  ${pad("№", 3)}${pad("Товар", 38)}${pad("К-ть", 7)}${pad("Ціна", 10)}Розбіжність`);
+    // Колонка коментарів з'являється лише коли постачальник справді щось написав:
+    // порожній стовпець у кожному документі — шум.
+    const commented = paused.lines.some((line) => line.note);
+    log(
+      `  ${pad("№", 3)}${pad("Товар", 34)}${pad("К-ть", 6)}${pad("Ціна", 9)}` +
+        (commented ? pad("Коментар", 28) : "") +
+        "Розбіжність",
+    );
     paused.lines.forEach((line, idx) => {
       const issues = byLine.get(idx) ?? [];
       const why = issues.length
         ? issues.map((i) => `${reasonText(i.code)}${i.blocking ? "" : " (не блокує)"}`).join("; ")
         : "—";
       log(
-        `  ${pad(idx + 1, 3)}${pad(line.rawName, 38)}${pad(line.qty, 7)}${pad(formatUah(line.priceKop), 10)}${why}`,
+        `  ${pad(idx + 1, 3)}${pad(line.rawName, 34)}${pad(line.qty, 6)}${pad(formatUah(line.priceKop), 9)}` +
+          (commented ? pad(line.note, 28) : "") +
+          why,
       );
-      if (line.note) log(`  ${" ".repeat(3)}↳ постачальник: «${line.note}»`);
     });
   }
 

@@ -85,13 +85,12 @@
   .msg { white-space: pre-wrap; background: var(--soft); border-left: 3px solid var(--accent);
     padding: 10px 12px; border-radius: 0 7px 7px 0; font-size: 13.5px; }
   .err { color: var(--warn); font-size: 13.5px; }
-  .note {
-    display: block; margin-top: 4px; padding-left: 9px;
-    border-left: 2px solid var(--accent); color: var(--ink);
-    font-size: 12.5px; font-style: italic;
+  .note.doc {
+    margin: 0 0 12px; padding: 8px 12px; background: var(--soft);
+    border-left: 2px solid var(--accent); border-radius: 0 6px 6px 0;
+    font-size: 13px; font-style: italic;
   }
-  .note.doc { margin: 0 0 12px; padding: 8px 12px; background: var(--soft);
-    border-radius: 0 6px 6px 0; font-size: 13px; }
+  td.said { font-style: italic; font-size: 12.5px; }
 </style>
 </head>
 <body>
@@ -267,6 +266,8 @@ function renderPaused(paused) {
     else byLine.set(issue.lineIdx, [...(byLine.get(issue.lineIdx) ?? []), issue]);
   }
 
+  // Порожня колонка в кожному документі — шум, тому вона умовна.
+  const commented = state.lines.some((line) => line.note);
   const head = [paused.docNumber, paused.docDate, paused.supplierName, paused.storeCode].filter(Boolean).join(" · ");
   $("resultTitle").textContent = "Потрібне рішення";
   $("result").innerHTML = `
@@ -275,16 +276,19 @@ function renderPaused(paused) {
     ${docLevel.map((i) => `<p class="why">документ — ${esc(state.reasons[i.code] ?? i.code)}: ${esc(i.detail)}</p>`).join("")}
     <table>
       <thead><tr><th style="width:34px"></th><th class="num">№</th><th>Товар</th>
-        <th class="num">К-ть</th><th class="num">Ціна</th><th>Розбіжність</th></tr></thead>
+        <th class="num">К-ть</th><th class="num">Ціна</th>
+        ${commented ? "<th>Коментар постачальника</th>" : ""}
+        <th>Розбіжність</th></tr></thead>
       <tbody>${state.lines.map((line, idx) => {
         const issues = byLine.get(idx) ?? [];
         const bad = issues.some((i) => i.blocking);
         return `<tr class="${bad ? "bad" : ""}">
           <td><input type="checkbox" data-line="${idx}" ${bad ? "" : "checked"}></td>
           <td class="num">${idx + 1}</td>
-          <td>${esc(line.rawName)}${line.note ? `<span class="note">${esc(line.note)}</span>` : ""}</td>
+          <td>${esc(line.rawName)}</td>
           <td class="num">${esc(line.qty)}</td>
           <td class="num">${uah(line.priceKop)}</td>
+          ${commented ? `<td class="said">${line.note ? esc(line.note) : '<span class="empty">—</span>'}</td>` : ""}
           <td>${issues.map((i) => `<span class="why ${i.blocking ? "" : "soft"}">${esc(state.reasons[i.code] ?? i.code)}${i.blocking ? "" : " (не блокує)"}<br><span class="mono">${esc(i.detail)}</span></span>`).join("<br>")}</td>
         </tr>`;
       }).join("")}</tbody>
