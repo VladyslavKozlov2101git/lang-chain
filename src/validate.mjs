@@ -145,7 +145,7 @@ export function validate({ doc, matched = [], ctx }) {
       add(
         null,
         "total_mismatch",
-        `сума рядків ${formatUah(sum)} грн, у документі ${formatUah(doc.totalKop)} грн`,
+        `сума рядків ${formatUah(sum)} грн, у документі ${formatUah(doc.totalKop)} грн, різниця ${formatUah(sum - doc.totalKop)} грн`,
       );
     }
   }

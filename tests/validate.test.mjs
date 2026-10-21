@@ -186,6 +186,7 @@ describe("R10 — сума документа", () => {
     const issues = run(doc({ totalKop: 90000 }));
     expect(codes(issues)).toEqual(["total_mismatch"]);
     expect(issues[0].detail).toContain("933,60 грн");
+    expect(issues[0].detail).toContain("різниця 33,60 грн");
   });
 
   test("AC-17: правильний підсумок претензій не викликає", () => {

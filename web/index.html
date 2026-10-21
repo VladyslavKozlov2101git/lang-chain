@@ -42,6 +42,14 @@
   }
   button:hover:not(:disabled) { border-color: var(--accent); }
   button:disabled { opacity: .5; cursor: default; }
+  button.busy { position: relative; color: transparent; opacity: 1; }
+  button.busy::after {
+    content: ""; position: absolute; inset: 0; margin: auto; width: 14px; height: 14px;
+    border: 2px solid var(--accent); border-top-color: transparent; border-radius: 50%;
+    animation: spin .6s linear infinite;
+  }
+  button.primary.busy::after { border-color: #fff; border-top-color: transparent; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   .files { list-style: none; margin: 0; padding: 0; }
   .files li { margin-bottom: 2px; }
@@ -337,9 +345,8 @@ function renderFailure(result) {
 }
 
 async function withBusy(button, fn) {
-  const was = button?.textContent;
   const row = button ? [...button.parentElement.querySelectorAll("button")] : [];
-  if (button) { row.forEach((b) => (b.disabled = true)); button.textContent = "…"; }
+  if (button) { row.forEach((b) => (b.disabled = true)); button.classList.add("busy"); }
   try {
     await fn();
   } catch (e) {
@@ -347,7 +354,7 @@ async function withBusy(button, fn) {
     $("result").innerHTML = `<p class="err">${esc(e.message)}</p>`;
     $("resultPanel").hidden = false;
   } finally {
-    if (button) { row.forEach((b) => (b.disabled = false)); button.textContent = was; }
+    if (button) { row.forEach((b) => (b.disabled = false)); button.classList.remove("busy"); }
   }
 }
 
