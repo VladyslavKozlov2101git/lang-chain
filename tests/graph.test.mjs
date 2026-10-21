@@ -1,85 +1,18 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
-
-import { Command } from "@langchain/langgraph";
-
-import { allSkus, checkpointerFor, openDb, pendingReviews, receiptOf, seedDb } from "../src/db.mjs";
-import { buildGraph } from "../src/graph.mjs";
-
-const TODAY = "2026-10-21";
-
-/**
- * Модель за сценарієм: віддає відповіді строго по порядку викликів і падає на
- * несподіваному. FakeListChatModel крутить список по колу, тобто зайвий виклик
- * моделі пройшов би непоміченим — а в графі саме кількість викликів і цікава.
- */
-class Scripted {
-  constructor(responses) {
-    this.responses = responses;
-    this.prompts = [];
-  }
-
-  async invoke(prompt) {
-    const next = this.responses[this.prompts.length];
-    if (next === undefined) {
-      throw new Error(`Scripted: несподіваний виклик моделі #${this.prompts.length + 1}`);
-    }
-    this.prompts.push(prompt);
-    if (next instanceof Error) throw next;
-    return next;
-  }
-}
-
-const LINES = [
-  ["Молоко пастеризоване 2,6% 900г п/е", 24, "38,90", "MLK-001"],
-  ["Кефір 2,5% 450г", 16, "26,40", "MLK-004"],
-  ["Сметана 20% 350г", 24, "47,60", "MLK-006"],
-  ["Сир кисломолочний 9% 350г", 20, "62,00", "MLK-011"],
-];
-
-const docReply = ({ docNumber = "РН-5512", total = "3738,40", lines = LINES, ...over } = {}) =>
-  JSON.stringify({
-    supplierEdrpou: "31245678",
-    supplierName: "ТОВ «Молочний Дім»",
-    storeCode: "KV-LUK",
-    poNumber: "PO-2026-1041",
-    docNumber,
-    docDate: TODAY,
-    pricesIncludeVat: false,
-    total,
-    lines: lines.map(([rawName, qty, price]) => ({
-      rawName,
-      qty,
-      unit: "шт",
-      price,
-      expiresOn: null,
-    })),
-    ...over,
-  });
-
-const picks = (lines = LINES) =>
-  lines.map(([, , , code]) => JSON.stringify({ code, confidence: 0.95 }));
-
-const setup = async ({ file } = {}) => {
-  const dir = file ? await mkdtemp(path.join(tmpdir(), "supply-graph-")) : null;
-  const dbFile = dir ? path.join(dir, "supply.db") : ":memory:";
-  const db = openDb(dbFile);
-  seedDb(db);
-  return { db, dbFile };
-};
-
-const graphOver = (db, model) =>
-  buildGraph({ model, db, today: TODAY, checkpointer: checkpointerFor(db) });
-
-const cfg = (threadId) => ({ configurable: { thread_id: threadId } });
-const input = (threadId) => ({ threadId, source: { path: "лист.txt", kind: "txt" }, raw: { text: "текст листа" } });
-
-const run = (graph, threadId) => graph.invoke(input(threadId), cfg(threadId));
-const resume = (graph, threadId, decision) =>
-  graph.invoke(new Command({ resume: decision }), cfg(threadId));
-
-const interruptOf = (result) => result.__interrupt__?.[0]?.value ?? null;
+import { allSkus, openDb, pendingReviews, receiptOf } from "../src/db.mjs";
+import {
+  cfg,
+  docReply,
+  graphOver,
+  interruptOf,
+  LINES,
+  overPriced,
+  picks,
+  resume,
+  run,
+  Scripted,
+  setup,
+  TODAY,
+} from "./helpers.mjs";
 
 describe("AC-19 — чистий документ проводиться без людини", () => {
   test("статус posted, накладна в БД, черга review порожня", async () => {
@@ -108,11 +41,6 @@ describe("AC-19 — чистий документ проводиться без 
 });
 
 describe("AC-20 — блокуюча розбіжність спиняє граф", () => {
-  const overPriced = () => {
-    const lines = LINES.map((l) => (l[3] === "MLK-006" ? [l[0], l[1], "49,90", l[3]] : l));
-    return { lines, total: "3793,60" };
-  };
-
   test("interrupt із таблицею розбіжностей, накладної немає, тред у черзі", async () => {
     const { db } = await setup();
     const model = new Scripted([docReply(overPriced()), ...picks()]);
@@ -197,12 +125,7 @@ describe("AC-20 — блокуюча розбіжність спиняє гра�
 describe("AC-8 — аляси народжуються з підтвердження людини", () => {
   test("після approve аляси є, і наступний документ матчиться без LLM", async () => {
     const { db } = await setup();
-    const overPriced = {
-      lines: LINES.map((l) => (l[3] === "MLK-006" ? [l[0], l[1], "49,90", l[3]] : l)),
-      total: "3793,60",
-    };
-
-    const first = new Scripted([docReply(overPriced), ...picks(), "текст акта"]);
+    const first = new Scripted([docReply(overPriced()), ...picks(), "текст акта"]);
     const graph1 = graphOver(db, first);
     await run(graph1, "t-first");
     await resume(graph1, "t-first", { action: "approve" });
@@ -300,11 +223,7 @@ describe("AC-27 — падіння шлюзу", () => {
 describe("AC-28 — інший процес бачить тред", () => {
   test("нове з'єднання з тим самим файлом БД відновлює приймання", async () => {
     const { db, dbFile } = await setup({ file: true });
-    const overPriced = {
-      lines: LINES.map((l) => (l[3] === "MLK-006" ? [l[0], l[1], "49,90", l[3]] : l)),
-      total: "3793,60",
-    };
-    await run(graphOver(db, new Scripted([docReply(overPriced), ...picks()])), "t-cross");
+    await run(graphOver(db, new Scripted([docReply(overPriced()), ...picks()])), "t-cross");
     db.close();
 
     // «Другий процес»: інший DatabaseSync, інший граф, той самий файл.

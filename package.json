@@ -9,6 +9,7 @@
     "seed": "node supply.mjs seed",
     "fixtures": "node fixtures/make-xlsx.mjs",
     "intake": "node supply.mjs intake",
+    "resume": "node supply.mjs resume",
     "review": "node supply.mjs review"
   },
   "jest": {
