@@ -136,6 +136,7 @@
       <div class="row" style="margin-top:12px" id="runRow" hidden>
         <button class="primary" id="run">Прогнати</button>
         <span class="mono" id="threadLabel"></span>
+        <a id="original" target="_blank" rel="noopener">оригінал</a>
       </div>
     </section>
 
@@ -232,8 +233,11 @@ async function openFile(name) {
   $("runRow").hidden = false;
   $("run").disabled = true;
 
-  const { text, threadId } = await api(`/api/letter?file=${encodeURIComponent(name)}`);
-  $("letter").textContent = text;
+  const { text, kind, threadId } = await api(`/api/letter?file=${encodeURIComponent(name)}`);
+  // У фото й скані тексту до прогону немає: його прочитає модель на кроці ocr.
+  $("letter").textContent =
+    text ?? `${kind === "scan" ? "Скан PDF" : "Фото"} без текстового шару — текст з'явиться після розпізнавання.\nОригінал відкривається посиланням нижче.`;
+  $("original").href = `/api/file?file=${encodeURIComponent(name)}`;
   $("threadLabel").textContent = `тред ${short(threadId)}…`;
   $("run").disabled = false;
   $("run").onclick = () => runIntake(name);
@@ -249,6 +253,7 @@ function renderChain(result) {
 
   const stages = [
     ["інтейк", `${result.threadId ? short(result.threadId) + "…" : "—"}`],
+    ...byKind("ocr").map((c) => ["розпізнавання", `${c.reply?.length ?? 0} символів · ${c.ms} мс`]),
     ["витяг", result.doc ? `${result.doc.docNumber} · ${result.doc.lines.length} ряд. · спроба ${result.attempt ?? 1}` : `${byKind("extract").length} виклик(и)`],
     ["матчинг", matched.length ? ["alias", "jev", "llm", "none"].filter(via).map((v) => `${via(v)} ${v === "none" ? "без збігу" : v}`).join(" · ") : "—"],
     ["валідація", issues?.length ? `${issues.length} розбіжн. · ${blocking} блокуючих` : "0 розбіжностей"],
@@ -360,6 +365,8 @@ async function withBusy(button, fn) {
 
 const show = (result) => {
   renderChain(result);
+  // Для фото тут транскрипція: звіряти розбіжності треба з тим, що прочитала модель.
+  if (result.letter) $("letter").textContent = result.letter;
   if (result.failed) renderFailure(result);
   else if (result.paused) renderPaused(result.paused);
   else renderOutcome(result);

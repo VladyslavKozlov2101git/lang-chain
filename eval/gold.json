@@ -226,6 +226,85 @@
         { "rawName": "Кефір 1% 900г", "qty": 12, "priceKop": 5304, "sku": "MLK-005" },
         { "rawName": "Масло солодковершкове 82,5% 200г", "qty": 40, "priceKop": 11820, "sku": "MLK-013" }
       ]
+    },
+    {
+      "id": "pdf-clean-01",
+      "fixture": "clean-01-molochka.pdf",
+      "_": "PDF з текстовим шаром: читається локально, без моделі. Має збігтися з clean-01 повністю.",
+      "doc": {
+        "supplierEdrpou": "31245678",
+        "storeCode": "KV-LUK",
+        "poNumber": "PO-2026-1041",
+        "docNumber": "РН-5512",
+        "docDate": "2026-10-21",
+        "pricesIncludeVat": false,
+        "totalKop": 373840
+      },
+      "lines": [
+        { "rawName": "Молоко пастеризоване 2,6% 900г п/е", "qty": 24, "priceKop": 3890, "sku": "MLK-001" },
+        { "rawName": "Кефір 2,5% 450г", "qty": 16, "priceKop": 2640, "sku": "MLK-004" },
+        { "rawName": "Сметана 20% 350г", "qty": 24, "priceKop": 4760, "sku": "MLK-006" },
+        { "rawName": "Сир кисломолочний 9% 350г", "qty": 20, "priceKop": 6200, "sku": "MLK-011" }
+      ]
+    },
+    {
+      "id": "skan-clean-02",
+      "fixture": "clean-02-hlib-skan.pdf",
+      "_": "Скан без текстового шару: сторінка рендериться в PNG і йде на розпізнавання.",
+      "doc": {
+        "supplierEdrpou": "32871045",
+        "storeCode": "KV-LUK",
+        "poNumber": "PO-2026-1043",
+        "docNumber": "4471",
+        "docDate": "2026-10-21",
+        "pricesIncludeVat": false,
+        "totalKop": 202140
+      },
+      "lines": [
+        { "rawName": "Хліб пшеничний 650г", "qty": 30, "priceKop": 2450, "sku": "BRD-001" },
+        { "rawName": "Батон нарізний 450г", "qty": 24, "priceKop": 2840, "sku": "BRD-004" },
+        { "rawName": "Булочка з маком 80г", "qty": 48, "priceKop": 1260, "sku": "BRD-006" }
+      ]
+    },
+    {
+      "id": "foto-r01",
+      "fixture": "r01-cina-vyshche-foto.jpg",
+      "_": "Фото з телефона: нахил, тінь. На ньому заміряна плутанина кирилиці й латиниці в номерах — див. foldId.",
+      "doc": {
+        "supplierEdrpou": "31245678",
+        "storeCode": "KV-LUK",
+        "poNumber": "PO-2026-1041",
+        "docNumber": "РН-5540",
+        "docDate": "2026-10-21",
+        "pricesIncludeVat": false,
+        "totalKop": 379360
+      },
+      "lines": [
+        { "rawName": "Молоко пастеризоване 2,6% 900г п/е", "qty": 24, "priceKop": 3890, "sku": "MLK-001" },
+        { "rawName": "Кефір 2,5% 450г", "qty": 16, "priceKop": 2640, "sku": "MLK-004" },
+        { "rawName": "Сметана 20% 350г", "qty": 24, "priceKop": 4990, "sku": "MLK-006" },
+        { "rawName": "Сир кисломолочний 9% 350г", "qty": 20, "priceKop": 6200, "sku": "MLK-011" }
+      ]
+    },
+    {
+      "id": "foto-heic-r01",
+      "fixture": "r01-cina-vyshche-foto.heic",
+      "_": "Те саме фото в HEIC — формат камери айфона. Декодується локально через libheif у WebAssembly, далі шлях як у JPEG.",
+      "doc": {
+        "supplierEdrpou": "31245678",
+        "storeCode": "KV-LUK",
+        "poNumber": "PO-2026-1041",
+        "docNumber": "РН-5540",
+        "docDate": "2026-10-21",
+        "pricesIncludeVat": false,
+        "totalKop": 379360
+      },
+      "lines": [
+        { "rawName": "Молоко пастеризоване 2,6% 900г п/е", "qty": 24, "priceKop": 3890, "sku": "MLK-001" },
+        { "rawName": "Кефір 2,5% 450г", "qty": 16, "priceKop": 2640, "sku": "MLK-004" },
+        { "rawName": "Сметана 20% 350г", "qty": 24, "priceKop": 4990, "sku": "MLK-006" },
+        { "rawName": "Сир кисломолочний 9% 350г", "qty": 20, "priceKop": 6200, "sku": "MLK-011" }
+      ]
     }
   ]
 }

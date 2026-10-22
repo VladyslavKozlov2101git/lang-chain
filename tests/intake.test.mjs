@@ -67,3 +67,34 @@ describe("AC-25 — thread_id як ідемпотентність", () => {
     expect(normalizeContent("а  б\r\nв\t\n")).toBe("а  б\nв");
   });
 });
+
+describe("PDF і фото", () => {
+  test("PDF з текстовим шаром читається локально, як лист", async () => {
+    const { source, raw } = await intake(fixture("clean-01-molochka.pdf"));
+    expect(source.kind).toBe("pdf");
+    expect(raw.text).toContain("РН-5512");
+    expect(raw.text).toContain("ЄДРПОУ 31245678");
+  });
+
+  test("скан без текстового шару чекає розпізнавання", async () => {
+    const { source, raw, threadId } = await intake(fixture("clean-02-hlib-skan.pdf"));
+    expect(source.kind).toBe("scan");
+    expect(raw.text).toBeNull();
+    expect(threadId).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  test("фото чекає розпізнавання, а тред рахується від байтів — стабільно", async () => {
+    const a = await intake(fixture("r01-cina-vyshche-foto.jpg"));
+    const b = await intake(fixture("r01-cina-vyshche-foto.jpg"));
+    expect(a.source.kind).toBe("image");
+    expect(a.raw.text).toBeNull();
+    // Розпізнавання недетерміноване: хеш від його тексту дав би два треди на один файл.
+    expect(a.threadId).toBe(b.threadId);
+  });
+
+  test("HEIC з айфона — теж фото, а не текст", async () => {
+    const { source, raw } = await intake(fixture("r01-cina-vyshche-foto.heic"));
+    expect(source.kind).toBe("image");
+    expect(raw.text).toBeNull();
+  });
+});

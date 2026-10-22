@@ -11,7 +11,7 @@
  */
 import { z } from "zod";
 
-import { parseKop, replyText } from "./text.mjs";
+import { foldId, parseKop, replyText } from "./text.mjs";
 
 export class ExtractError extends Error {
   constructor(message, { lastReply } = {}) {
@@ -127,7 +127,16 @@ function toKop(parsed) {
     }
   }
   const { total, ...rest } = parsed;
-  return { ...rest, note: parsed.note ?? null, totalKop, lines };
+  return {
+    ...rest,
+    // Ідентифікатори порівнюються з БД точним збігом — див. foldId.
+    docNumber: foldId(parsed.docNumber),
+    poNumber: foldId(parsed.poNumber),
+    storeCode: foldId(parsed.storeCode),
+    note: parsed.note ?? null,
+    totalKop,
+    lines,
+  };
 }
 
 /**

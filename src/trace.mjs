@@ -21,7 +21,24 @@ export function callKind(prompt) {
   if (prompt.includes("Перетвори документ постачальника")) return "extract";
   if (prompt.includes("Варіанти з номенклатури")) return "match";
   if (prompt.includes("лист постачальнику")) return "explain";
+  if (prompt.includes("Перепиши текст дослівно")) return "ocr";
   return "llm";
+}
+
+/**
+ * Промпт для показу. Розпізнавання шле масив повідомлень із картинками, і base64
+ * фото — це мегабайти в панелі й у терміналі. Картинку замінюємо підписом.
+ */
+export function promptText(prompt) {
+  if (typeof prompt === "string") return prompt;
+  return prompt
+    .flatMap((message) => (Array.isArray(message.content) ? message.content : [{ text: message.content }]))
+    .map((part) =>
+      part.image_url
+        ? `[зображення, ${Math.round((part.image_url.url.length * 3) / 4 / 1024)} КБ]`
+        : part.text,
+    )
+    .join("\n");
 }
 
 const json = (value) => JSON.stringify(value, null, 2);
@@ -49,7 +66,10 @@ export function withTrace(model, judge = null) {
   return {
     calls,
     model: model && {
-      invoke: (prompt) => record(callKind(prompt), prompt, () => model.invoke(prompt), replyText),
+      invoke: (prompt) => {
+        const shown = promptText(prompt);
+        return record(callKind(shown), shown, () => model.invoke(prompt), replyText);
+      },
     },
     judge: judge && ((request) => record("match · jev", json(request), () => judge(request), json)),
   };

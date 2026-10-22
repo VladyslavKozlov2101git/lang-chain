@@ -22,7 +22,7 @@ import {
 } from "./db.mjs";
 import { reasonText } from "./explain.mjs";
 import { buildGraph } from "./graph.mjs";
-import { intake } from "./intake.mjs";
+import { ACCEPTED, intake } from "./intake.mjs";
 import { createJudge } from "./judge.mjs";
 import { createModel } from "./llm.mjs";
 import { withTrace } from "./trace.mjs";
@@ -40,7 +40,21 @@ const PAGES = {
   "/shema": "shema.html",
 };
 
-const listInbox = async () => (await readdir(INBOX)).filter((f) => /\.(txt|xlsx)$/i.test(f)).sort();
+const listInbox = async () => (await readdir(INBOX)).filter((f) => ACCEPTED.test(f)).sort();
+
+// Оригінал віддається браузеру як є: фото й PDF він показує сам.
+const MIME = {
+  ".pdf": "application/pdf",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+  // Chrome HEIC не показує й просто скачає файл; Safari відкриє.
+  ".heic": "image/heic",
+  ".heif": "image/heif",
+  ".txt": "text/plain; charset=utf-8",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
 
 /**
  * Назва файлу приходить з браузера, тому перевіряється двічі: що в ній немає шляху
@@ -67,6 +81,8 @@ const outcomeOf = (db, threadId, state) => ({
   matched: state.matched ?? null,
   doc: state.doc ?? null,
   attempt: state.attempt ?? null,
+  // Для фото й скану — те, що прочитала модель: людина звіряє це з оригіналом.
+  letter: state.raw?.text ?? null,
 });
 
 const traceOf = (calls) => calls.map((call, i) => ({ i, ...call }));
@@ -95,7 +111,7 @@ export function createServer({ db, makeModel = createModel, makeJudge = createJu
       return Promise.all(
         files.map(async (name) => ({
           name,
-          kind: name.endsWith(".xlsx") ? "xlsx" : "txt",
+          kind: path.extname(name).slice(1).toLowerCase(),
           size: (await stat(path.join(INBOX, name))).size,
         })),
       );
@@ -220,10 +236,16 @@ export function createServer({ db, makeModel = createModel, makeJudge = createJu
 
     const send = (status, payload, type = "application/json; charset=utf-8") => {
       res.writeHead(status, { "content-type": type, "cache-control": "no-store" });
-      res.end(typeof payload === "string" ? payload : JSON.stringify(payload));
+      const raw = typeof payload === "string" || Buffer.isBuffer(payload);
+      res.end(raw ? payload : JSON.stringify(payload));
     };
 
     try {
+      if (route === "GET /api/file") {
+        const file = await resolveFixture(url.searchParams.get("file"));
+        return send(200, await readFile(file), MIME[path.extname(file).toLowerCase()]);
+      }
+
       if (req.method === "GET" && PAGES[url.pathname]) {
         // Читаємо щоразу: правку сторінки видно без рестарту сервера.
         const html = await readFile(path.join(WEB, PAGES[url.pathname]), "utf8");

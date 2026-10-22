@@ -214,7 +214,7 @@ describe("прогін і рішення", () => {
 
     const done = await get(base, "/api/queue");
     expect(done.body.pending).toEqual([]);
-    expect(done.body.receipts[0].docNumber).toBe("РН-5540");
+    expect(done.body.receipts[0].docNumber).toBe("PH-5540");
     expect(done.body.aliases).toHaveLength(4);
     expect(done.body.acts).toHaveLength(1);
   });
@@ -226,7 +226,7 @@ describe("прогін і рішення", () => {
 
     const { body } = await get(base, `/api/thread?id=${intake.body.threadId}`);
     expect(body.next).toEqual(["review"]);
-    expect(body.doc.docNumber).toBe("РН-5540");
+    expect(body.doc.docNumber).toBe("PH-5540");
     expect(body.issues.map((i) => i.code)).toEqual(["price_above_protocol"]);
   });
 
@@ -260,5 +260,51 @@ describe("прогін і рішення", () => {
     // Витяг уже в чекпойнті: у трасі він є, і повторювати його не доведеться.
     expect(body.trace[0].kind).toBe("extract");
     expect(body.trace.at(-1).error).toContain("502");
+  });
+});
+
+describe("фото й PDF", () => {
+  const TRANSCRIPT = "Накладна № РН-5540 від 21.10.2026 (транскрипція)";
+
+  test("вхідні показують PDF і фото з типом за розширенням", async () => {
+    const base = await listen({ db: seeded(), model: new Scripted([]) });
+    const { body } = await get(base, "/api/inbox");
+    expect(body.find((f) => f.name === "r01-cina-vyshche-foto.jpg").kind).toBe("jpg");
+    expect(body.find((f) => f.name === "clean-01-molochka.pdf").kind).toBe("pdf");
+    expect(body.find((f) => f.name === "r01-cina-vyshche-foto.heic").kind).toBe("heic");
+  });
+
+  test("лист із фото до прогону — без тексту, а оригінал віддається як є", async () => {
+    const base = await listen({ db: seeded(), model: new Scripted([]) });
+    const { body } = await get(base, "/api/letter?file=r01-cina-vyshche-foto.jpg");
+    expect(body.text).toBeNull();
+    expect(body.kind).toBe("image");
+
+    const res = await fetch(`${base}/api/file?file=r01-cina-vyshche-foto.jpg`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
+    expect((await res.arrayBuffer()).byteLength).toBeGreaterThan(10_000);
+  });
+
+  test("оригінал — той самий білий список, що й лист", async () => {
+    const base = await listen({ db: seeded(), model: new Scripted([]) });
+    const res = await fetch(`${base}/api/file?file=${encodeURIComponent("../../package.json")}`);
+    expect(res.status).toBe(400);
+  });
+
+  test("прогін фото: трасування без base64, транскрипція повертається листом", async () => {
+    const judge = new ScriptedJudge(LINES.map((l) => l[3]));
+    const base = await listen({
+      db: seeded(),
+      model: new Scripted([TRANSCRIPT, docReply(overPriced())]),
+      judge: (r) => judge.judge(r),
+    });
+    const { body } = await post(base, "/api/intake", { file: "r01-cina-vyshche-foto.jpg" });
+
+    expect(body.paused.issues.map((i) => i.code)).toEqual(["price_above_protocol"]);
+    expect(body.trace.map((c) => c.kind)).toEqual(["ocr", "extract", "match · jev"]);
+    expect(body.trace[0].prompt).toMatch(/\[зображення, \d+ КБ\]/);
+    expect(body.trace[0].prompt.length).toBeLessThan(2000);
+    expect(body.letter).toBe(TRANSCRIPT);
   });
 });

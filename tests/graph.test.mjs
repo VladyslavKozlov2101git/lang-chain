@@ -1,3 +1,6 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { allSkus, openDb, pendingReviews, receiptOf } from "../src/db.mjs";
 import {
   cfg,
@@ -48,13 +51,13 @@ describe("AC-20 — блокуюча розбіжність спиняє гра�
     const out = await run(graphOver(db, model), "t-r01");
 
     const paused = interruptOf(out);
-    expect(paused.docNumber).toBe("РН-5540");
+    expect(paused.docNumber).toBe("PH-5540");
     expect(paused.issues.map((i) => i.code)).toEqual(["price_above_protocol"]);
     expect(receiptOf(db, "t-r01")).toBeNull();
 
     const queue = pendingReviews(db);
     expect(queue).toHaveLength(1);
-    expect(queue[0]).toMatchObject({ threadId: "t-r01", docNumber: "РН-5540", issuesCount: 1 });
+    expect(queue[0]).toMatchObject({ threadId: "t-r01", docNumber: "PH-5540", issuesCount: 1 });
   });
 
   test("AC-21: resume --approve проводить усі рядки й пише акт", async () => {
@@ -276,7 +279,7 @@ describe("AC-27 — падіння шлюзу", () => {
 
     // Витяг уже в чекпойнті: повтор не починає з нуля, а йде на match.
     const state = await graph.getState(cfg("t-boom"));
-    expect(state.values.doc.docNumber).toBe("РН-5512");
+    expect(state.values.doc.docNumber).toBe("PH-5512");
     expect(state.next).toEqual(["match"]);
     expect(receiptOf(db, "t-boom")).toBeNull();
   });
@@ -465,5 +468,50 @@ describe("T16 — зіставлення через System One", () => {
     expect(out.status).toBe("posted");
     expect(out.matched.every((m) => m.via === "llm")).toBe(true);
     expect(model.prompts).toHaveLength(1 + LINES.length);
+  });
+});
+
+describe("фото й скан — вузол ocr", () => {
+  const PHOTO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "inbox", "r01-cina-vyshche-foto.jpg");
+  const photoInput = (threadId) => ({ threadId, source: { path: PHOTO, kind: "image" }, raw: { text: null } });
+  const TRANSCRIPT = "Накладна № РН-5512 від 21.10.2026 (транскрипція)";
+
+  test("фото розпізнається, і далі йде звичайним шляхом", async () => {
+    const { db } = await setup();
+    const model = new Scripted([TRANSCRIPT, docReply()]);
+    const judge = new ScriptedJudge(LINES.map((l) => l[3]));
+
+    const out = await graphOver(db, model, (r) => judge.judge(r)).invoke(photoInput("t-photo"), cfg("t-photo"));
+
+    expect(out.status).toBe("posted");
+    expect(out.raw.text).toBe(TRANSCRIPT);
+    // Перший виклик — повідомлення з картинкою, другий — звичайний промпт витягу
+    // з транскрипцією всередині.
+    expect(Array.isArray(model.prompts[0])).toBe(true);
+    expect(model.prompts[1]).toContain(TRANSCRIPT);
+  });
+
+  test("те саме фото вдруге не кличе модель узагалі — дедуп стоїть перед ocr", async () => {
+    const { db } = await setup();
+    const judge = new ScriptedJudge(LINES.map((l) => l[3]));
+    await graphOver(db, new Scripted([TRANSCRIPT, docReply()]), (r) => judge.judge(r)).invoke(photoInput("t-twice"), cfg("t-twice"));
+
+    const again = new Scripted([]);
+    const out = await graphOver(db, again).invoke(photoInput("t-twice"), cfg("t-twice"));
+    expect(out.status).toBe("posted");
+    expect(again.prompts).toHaveLength(0);
+  });
+
+  test("падіння шлюзу на розпізнаванні — тред відновлюється з ocr", async () => {
+    const { db } = await setup();
+    await expect(
+      graphOver(db, new Scripted([new Error("502 Bad Gateway")])).invoke(photoInput("t-ocr-boom"), cfg("t-ocr-boom")),
+    ).rejects.toThrow("502");
+
+    const judge = new ScriptedJudge(LINES.map((l) => l[3]));
+    const graph = graphOver(db, new Scripted([TRANSCRIPT, docReply()]), (r) => judge.judge(r));
+    expect((await graph.getState(cfg("t-ocr-boom"))).next).toEqual(["ocr"]);
+    const out = await graph.invoke(null, cfg("t-ocr-boom"));
+    expect(out.status).toBe("posted");
   });
 });

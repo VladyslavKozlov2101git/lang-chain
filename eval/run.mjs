@@ -24,10 +24,11 @@ import { fileURLToPath } from "node:url";
 import { allSkus, openDb, seedDb } from "../src/db.mjs";
 import { extract, ExtractError } from "../src/extract.mjs";
 import { intake } from "../src/intake.mjs";
+import { transcribe } from "../src/ocr.mjs";
 import { createJudge, judgeLines } from "../src/judge.mjs";
 import { createModel, MODEL } from "../src/llm.mjs";
 import { matchLines } from "../src/match.mjs";
-import { normalizeName } from "../src/text.mjs";
+import { foldId, normalizeName } from "../src/text.mjs";
 import { CONFIDENCE_MIN } from "../src/validate.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -48,9 +49,9 @@ const HARD_FIELDS = [
 const MAX_ATTEMPTS = 2;
 
 // "№ 4471", "4471", "No4471" — це один і той самий номер. Форматування не помилка.
-const sameDocNumber = (a, b) =>
-  String(a ?? "").replace(/[№\s]/g, "").toLowerCase() ===
-  String(b ?? "").replace(/[№\s]/g, "").toLowerCase();
+// Абетка теж: витяг зводить ідентифікатори до латиниці, а золото писане кирилицею.
+const docKey = (n) => foldId(String(n ?? "")).replace(/[№\s]/g, "").toLowerCase();
+const sameDocNumber = (a, b) => docKey(a) === docKey(b);
 
 function parseArgs(argv) {
   const out = { repeats: 3, cases: null, model: MODEL, check: false, judge: false };
@@ -100,9 +101,13 @@ function checkGold(gold, skuByCode) {
   return problems;
 }
 
-/** Один прогін одного кейса: витяг із ретраєм (як у графі) + матчинг без алясів. */
-async function runOnce({ model, judge, text, skus, gold }) {
+/** Один прогін одного кейса: [розпізнавання] + витяг із ретраєм (як у графі) +
+ *  матчинг без алясів. Фото розпізнається в кожному повторі заново: мінливість
+ *  читання — саме те, що тут міряється. */
+async function runOnce({ model, judge, text, source, skus, gold }) {
   const started = Date.now();
+  if (text == null) text = await transcribe({ model, source });
+  const ocrMs = source && Date.now() - started;
   let attempts = 0;
   let feedback = "";
   let doc = null;
@@ -119,7 +124,9 @@ async function runOnce({ model, judge, text, skus, gold }) {
     }
   }
   const extractMs = Date.now() - started;
-  if (!doc) return { ok: false, attempts, extractMs, failure, ms: extractMs };
+  // Для фото транскрипція йде в звіт: без неї помилку витягу не відрізнити від помилки зору.
+  const ocr = source ? { ocrMs, ocrText: text } : {};
+  if (!doc) return { ok: false, attempts, extractMs, ...ocr, failure, ms: extractMs };
 
   // Аляси вимкнені: міряємо чистий матчинг, інакше друга ітерація міряла б БД.
   const matched = judge
@@ -162,6 +169,7 @@ async function runOnce({ model, judge, text, skus, gold }) {
     ok: true,
     attempts,
     extractMs,
+    ...ocr,
     ms: Date.now() - started,
     fields,
     poNumber,
@@ -295,10 +303,10 @@ const summaries = [];
 const raw = [];
 
 for (const c of selected) {
-  const { raw: file } = await intake(path.join(INBOX, c.fixture));
+  const { raw: file, source } = await intake(path.join(INBOX, c.fixture));
   const runs = [];
   for (let i = 0; i < args.repeats; i++) {
-    const result = await runOnce({ model, judge, text: file.text, skus, gold: c });
+    const result = await runOnce({ model, judge, text: file.text, source: file.text == null ? source : null, skus, gold: c });
     runs.push(result);
     process.stderr.write(result.ok ? (result.attempts > 1 ? "r" : ".") : "x");
   }

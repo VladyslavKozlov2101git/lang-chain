@@ -39,7 +39,7 @@ class Recorder {
 describe("AC-3 — витяг структури", () => {
   test("валідний JSON розбирається повністю", async () => {
     const { doc } = await extract({ model: fake(reply()), text: "неважливо" });
-    expect(doc.docNumber).toBe("РН-5512");
+    expect(doc.docNumber).toBe("PH-5512");
     expect(doc.supplierEdrpou).toBe("31245678");
     expect(doc.storeCode).toBe("KV-LUK");
     expect(doc.poNumber).toBe("PO-2026-1041");
@@ -58,7 +58,7 @@ describe("AC-3 — витяг структури", () => {
   test("JSON в огорожі й з привітанням все одно читається", async () => {
     const wrapped = `Доброго дня! Ось розібрана накладна:\n\n\`\`\`json\n${reply()}\n\`\`\`\n\nЗвертайтесь.`;
     const { doc } = await extract({ model: fake(wrapped), text: "неважливо" });
-    expect(doc.docNumber).toBe("РН-5512");
+    expect(doc.docNumber).toBe("PH-5512");
   });
 
   test("не JSON → ExtractError з причиною, а не порожній документ", async () => {
@@ -152,5 +152,19 @@ describe("примітки постачальника", () => {
     await extract({ model, text: "документ" });
     expect(model.prompts[0]).toContain("на пробу");
     expect(model.prompts[0]).toContain("нічого не вигадуй");
+  });
+});
+
+describe("ідентифікатори після витягу", () => {
+  test("номери й код магазину зведені до латиниці — інакше заявку не знайти", async () => {
+    const { doc } = await extract({
+      model: fake(reply({ poNumber: "РО-2026-1041", docNumber: "РН-5512", storeCode: "КV-LUK" })),
+      text: "лист",
+    });
+    expect(doc.poNumber).toBe("PO-2026-1041");
+    expect(doc.docNumber).toBe("PH-5512");
+    expect(doc.storeCode).toBe("KV-LUK");
+    // Назви товарів не чіпаємо: на них тримаються аляси й матчинг.
+    expect(doc.lines[0].rawName).toBe(LINES[0].rawName);
   });
 });

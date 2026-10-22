@@ -1,4 +1,4 @@
-import { formatUah, normalizeName, parseKop, tokens } from "../src/text.mjs";
+import { foldId, formatUah, normalizeName, parseKop, tokens } from "../src/text.mjs";
 
 describe("parseKop", () => {
   test("AC-4: три формати ціни дають однакові копійки", () => {
@@ -68,5 +68,23 @@ describe("normalizeName", () => {
     const doc = tokens("Молоко Яготинське 2,6% 900г п/е");
     const sku = tokens("Молоко Яготинське 2.6% 0,9л");
     expect(doc.filter((t) => sku.includes(t))).toEqual(["молоко", "яготинське", "2.6%"]);
+  });
+});
+
+describe("foldId — кирилиця й латиниця, що виглядають однаково", () => {
+  test("обидва прочитання з фото дають один ідентифікатор", () => {
+    // Заміряно на шлюзі: qwen прочитав «РН» латиницею, deepseek — «PO» кирилицею.
+    expect(foldId("РН-5540")).toBe(foldId("PH-5540"));
+    expect(foldId("РО-2026-1041")).toBe("PO-2026-1041");
+  });
+
+  test("латиниця й цифри лишаються як є, null теж", () => {
+    expect(foldId("KV-LUK")).toBe("KV-LUK");
+    expect(foldId("4471")).toBe("4471");
+    expect(foldId(null)).toBeNull();
+  });
+
+  test("кирилиця без латинського двійника не чіпається", () => {
+    expect(foldId("ВН-Ж17")).toBe("BH-Ж17");
   });
 });

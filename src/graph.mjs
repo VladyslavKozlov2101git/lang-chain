@@ -1,11 +1,11 @@
 /**
  * Граф приймання. Цей файл лише зшиває вузли: вся логіка живе в сусідніх модулях.
  *
- *   START → dedupe → extract ⟲ → match → validate → ┬ чисто ───→ commit ─┬→ END
- *              │        (ретрай ребром,             │                     └→ explain → END
- *              └→ END    макс 2 спроби)             └ блокуючі → review ⏸ ┤
- *           (тред уже                                                     └→ explain → END
- *            закритий)
+ *   START → dedupe ─┬──────→ extract ⟲ → match → validate → ┬ чисто ───→ commit ─┬→ END
+ *              │    └→ ocr ─┘ (ретрай ребром,               │                     └→ explain → END
+ *              │   (фото,      макс 2 спроби)               └ блокуючі → review ⏸ ┤
+ *              │    скан)                                                         └→ explain → END
+ *              └→ END (тред уже закритий)
  *
  * Фабрика приймає { model, judge, db, checkpointer } аргументами, а не імпортує їх
  * сама: саме тому тести підставляють FakeListChatModel і БД у пам'яті без мок-магії.
@@ -36,6 +36,7 @@ import { explainIssues } from "./explain.mjs";
 import { extract, ExtractError } from "./extract.mjs";
 import { judgeLines } from "./judge.mjs";
 import { matchLines } from "./match.mjs";
+import { transcribe } from "./ocr.mjs";
 import { formatUah, normalizeName } from "./text.mjs";
 import { blocking, netOf, validate } from "./validate.mjs";
 
@@ -87,6 +88,14 @@ export function buildGraph({ model, judge, db, today, checkpointer }) {
     if (!prior) return { seen: false };
     console.error(`[dedupe] тред уже закритий зі статусом ${prior.status} — повторно не проводимо`);
     return { ...prior, seen: true };
+  };
+
+  // Транскрипція лягає в raw.text, тож далі фото нічим не відрізняється від листа.
+  // Падіння шлюзу тут летить нагору, як і в extract: тред відновлюється з цього вузла.
+  const ocrNode = async (state) => {
+    const text = await transcribe({ model, source: state.source });
+    console.error(`[ocr] ${state.source.kind}: ${text ? `${text.length} символів` : "документа не видно"}`);
+    return { raw: { ...state.raw, text } };
   };
 
   const extractNode = async (state) => {
@@ -296,6 +305,7 @@ export function buildGraph({ model, judge, db, today, checkpointer }) {
 
   return new StateGraph(SupplyState)
     .addNode("dedupe", dedupeNode)
+    .addNode("ocr", ocrNode)
     .addNode("extract", extractNode)
     .addNode("match", matchNode)
     .addNode("validate", validateNode)
@@ -303,7 +313,12 @@ export function buildGraph({ model, judge, db, today, checkpointer }) {
     .addNode("commit", commitNode)
     .addNode("explain", explainNode)
     .addEdge(START, "dedupe")
-    .addConditionalEdges("dedupe", (state) => (state.seen ? END : "extract"), ["extract", END])
+    .addConditionalEdges(
+      "dedupe",
+      (state) => (state.seen ? END : state.raw?.text == null ? "ocr" : "extract"),
+      ["ocr", "extract", END],
+    )
+    .addEdge("ocr", "extract")
     .addConditionalEdges("extract", afterExtract, ["extract", "match", "review"])
     .addEdge("match", "validate")
     .addConditionalEdges("validate", afterValidate, ["review", "commit"])

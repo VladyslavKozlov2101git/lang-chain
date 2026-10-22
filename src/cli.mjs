@@ -27,7 +27,7 @@ import { withTrace } from "./trace.mjs";
 const USAGE = `supply-flow — приймання поставки від постачальника
 
   node supply.mjs seed                        початкові дані (магазини, SKU, протоколи, заявки)
-  node supply.mjs intake <файл>               прогін документа: .txt або .xlsx
+  node supply.mjs intake <файл>               прогін документа: .txt, .xlsx, .pdf, фото (.jpg .png .webp .heic)
   node supply.mjs review                      черга розбіжностей, що чекають рішення
   node supply.mjs resume <тред> --approve      прийняти все
   node supply.mjs resume <тред> --reject       відмовити
