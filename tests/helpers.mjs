@@ -33,6 +33,35 @@ export class Scripted {
   }
 }
 
+/**
+ * Суддя за сценарієм. Як і Scripted, падає на несподіваному — але тут несподіване
+ * це *другий* запит: уся цінність форми в тому, що рядків багато, а запит один,
+ * і тест мусить це тримати.
+ *
+ * @param answers  по елементу на рядок: код SKU або [код, exists]
+ */
+export class ScriptedJudge {
+  constructor(answers) {
+    this.answers = answers;
+    this.requests = [];
+  }
+
+  async judge(request) {
+    if (this.requests.length) {
+      throw new Error("ScriptedJudge: другий запит — усі рядки мали поїхати одним");
+    }
+    this.requests.push(request);
+    const answers = {};
+    request.state.lines.forEach((_, i) => {
+      const spec = this.answers[i];
+      const [choice, exists] = Array.isArray(spec) ? spec : [spec, 0.97];
+      answers[`exists_${i}`] = { type: "noul", noul: exists };
+      answers[`sku_${i}`] = { type: "choice", choice, confidence: 1, probabilities: { [choice]: 1 } };
+    });
+    return { answers, usage: { input_tokens: 0 } };
+  }
+}
+
 /** [назва в документі, кількість, ціна, код SKU] — збігається з PO-2026-1041. */
 export const LINES = [
   ["Молоко пастеризоване 2,6% 900г п/е", 24, "38,90", "MLK-001"],
@@ -83,8 +112,8 @@ export const setup = async ({ file = false } = {}) => {
   return { db, dbFile };
 };
 
-export const graphOver = (db, model) =>
-  buildGraph({ model, db, today: TODAY, checkpointer: checkpointerFor(db) });
+export const graphOver = (db, model, judge) =>
+  buildGraph({ model, judge, db, today: TODAY, checkpointer: checkpointerFor(db) });
 
 export const cfg = (threadId) => ({ configurable: { thread_id: threadId } });
 

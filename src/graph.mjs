@@ -7,8 +7,13 @@
  *           (тред уже                                                     └→ explain → END
  *            закритий)
  *
- * Фабрика приймає { model, db, checkpointer } аргументами, а не імпортує їх сама:
- * саме тому тести підставляють FakeListChatModel і БД у пам'яті без мок-магії.
+ * Фабрика приймає { model, judge, db, checkpointer } аргументами, а не імпортує їх
+ * сама: саме тому тести підставляють FakeListChatModel і БД у пам'яті без мок-магії.
+ *
+ * `match` зіставляє через System One (`judge.mjs`), коли переданий `judge`, і через
+ * чат-модель (`match.mjs`), коли ні. Форма графа від цього не залежить: контракт у
+ * двох реалізацій однаковий. Залежить лише те, чи має сенс поріг у R8 — див. T13
+ * і T16 у specs.
  *
  * Контекст із БД (номенклатура, протоколи, заявка) у стан не кладеться: там Map і
  * функції, яких чекпойнтер не серіалізує. Вузли читають його щоразу — sqlite у тому
@@ -29,6 +34,7 @@ import {
 } from "./db.mjs";
 import { explainIssues } from "./explain.mjs";
 import { extract, ExtractError } from "./extract.mjs";
+import { judgeLines } from "./judge.mjs";
 import { matchLines } from "./match.mjs";
 import { formatUah, normalizeName } from "./text.mjs";
 import { blocking, netOf, validate } from "./validate.mjs";
@@ -63,7 +69,7 @@ function approvedIndexes(state) {
 
 const hasCode = (state, code) => (state.issues ?? []).some((i) => i.code === code);
 
-export function buildGraph({ model, db, today, checkpointer }) {
+export function buildGraph({ model, judge, db, today, checkpointer }) {
   const contextFor = (doc) =>
     loadContext(db, {
       edrpou: doc.supplierEdrpou,
@@ -112,12 +118,17 @@ export function buildGraph({ model, db, today, checkpointer }) {
 
   const matchNode = async (state) => {
     const ctx = contextFor(state.doc);
-    const matched = await matchLines({
-      model,
-      lines: state.doc.lines,
-      skus: ctx.skus,
-      aliasFor: ctx.supplier ? (key) => aliasFor(db, ctx.supplier.id, key) : () => null,
-    });
+    const lines = state.doc.lines;
+    const skus = ctx.skus;
+    const aliasKey = ctx.supplier ? (key) => aliasFor(db, ctx.supplier.id, key) : () => null;
+
+    // judgeLines і matchLines віддають однакове, тому решта графа — і R8
+    // передусім — не знає, котрий із них відпрацював. Різниця лише в тому, що
+    // лежить у confidence: у Jev це окреме судження про наявність, у чат-моделі —
+    // число, яке вона написала про себе сама.
+    const matched = judge
+      ? await judgeLines({ judge, lines, skus, aliasFor: aliasKey })
+      : await matchLines({ model, lines, skus, aliasFor: aliasKey });
     return { matched };
   };
 
@@ -201,7 +212,9 @@ export function buildGraph({ model, db, today, checkpointer }) {
         });
       }
 
-      if (state.decision && match.via === "llm" && learnable(idx)) {
+      // `via !== "alias"`, а не `=== "llm"`: збіг від Jev людина підтвердила так
+      // само, і без аляса він їхав би в модель щоразу.
+      if (state.decision && match.via !== "alias" && learnable(idx)) {
         aliases.push({
           supplierId: ctx.supplier.id,
           normalized: normalizeName(line.rawName),

@@ -19,6 +19,8 @@ const runCli = async (argv, { dbFile, model }) => {
       if (!model) throw new Error("ця команда не повинна створювати модель");
       return model;
     },
+    // Явно без Jev: тести офлайн, а ключ у середовищі розробника є.
+    makeJudge: async () => null,
   });
   return { code, text: out.join("\n") };
 };

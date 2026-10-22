@@ -8,6 +8,11 @@
  *   npm run eval -- --check                     лише перевірити золоті дані, без мережі
  *   npm run eval -- --repeats 3                 усі кейси по 3 прогони
  *   npm run eval -- --case pdv,r01-price -r 5   два кейси по 5
+ *   npm run eval -- --judge -r 3                зіставлення через System One
+ *
+ * `--judge` міняє лише матчинг: витяг в обох шляхах однаковий, тому різниця в
+ * колонці SKU і в часі — це різниця матчерів. Порівнювати два прогони можна лише
+ * один по одному в одній сесії: латентність шлюзу гуляє втричі між сесіями (T13).
  *
  * Міряються лише стохастичні кроки — `extract` і `match`. `validate` детермінований,
  * його семплювати нема сенсу: він уже покритий unit-тестами.
@@ -19,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { allSkus, openDb, seedDb } from "../src/db.mjs";
 import { extract, ExtractError } from "../src/extract.mjs";
 import { intake } from "../src/intake.mjs";
+import { createJudge, judgeLines } from "../src/judge.mjs";
 import { createModel, MODEL } from "../src/llm.mjs";
 import { matchLines } from "../src/match.mjs";
 import { normalizeName } from "../src/text.mjs";
@@ -47,11 +53,12 @@ const sameDocNumber = (a, b) =>
   String(b ?? "").replace(/[№\s]/g, "").toLowerCase();
 
 function parseArgs(argv) {
-  const out = { repeats: 3, cases: null, model: MODEL, check: false };
+  const out = { repeats: 3, cases: null, model: MODEL, check: false, judge: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const value = () => argv[++i];
     if (arg === "--check") out.check = true;
+    else if (arg === "--judge") out.judge = true;
     else if (arg === "--repeats" || arg === "-r") out.repeats = Number(value());
     else if (arg === "--case" || arg === "-c") out.cases = value().split(",").map((s) => s.trim());
     else if (arg === "--model" || arg === "-m") out.model = value();
@@ -94,7 +101,7 @@ function checkGold(gold, skuByCode) {
 }
 
 /** Один прогін одного кейса: витяг із ретраєм (як у графі) + матчинг без алясів. */
-async function runOnce({ model, text, skus, gold }) {
+async function runOnce({ model, judge, text, skus, gold }) {
   const started = Date.now();
   let attempts = 0;
   let feedback = "";
@@ -115,7 +122,9 @@ async function runOnce({ model, text, skus, gold }) {
   if (!doc) return { ok: false, attempts, extractMs, failure, ms: extractMs };
 
   // Аляси вимкнені: міряємо чистий матчинг, інакше друга ітерація міряла б БД.
-  const matched = await matchLines({ model, lines: doc.lines, skus, aliasFor: () => null });
+  const matched = judge
+    ? await judgeLines({ judge, lines: doc.lines, skus, aliasFor: () => null })
+    : await matchLines({ model, lines: doc.lines, skus, aliasFor: () => null });
   const byId = new Map(skus.map((s) => [s.id, s]));
 
   const fields = {};
@@ -206,7 +215,7 @@ function report(summaries, args) {
   const total = (key) => summaries.reduce((acc, s) => acc + s[key], 0);
   const runs = total("runs");
 
-  console.log(`\n  модель ${args.model} · кейсів ${summaries.length} · повторів ${args.repeats} · прогонів ${runs}\n`);
+  console.log(`\n  модель ${args.model} · матчинг ${args.judge ? "System One" : "чат-модель"} · кейсів ${summaries.length} · повторів ${args.repeats} · прогонів ${runs}\n`);
   console.log(
     `  ${pad("кейс", 16)}${pad("витяг", 8)}${pad("ретрай", 8)}${pad("хедер", 8)}${pad("рядки", 8)}${pad("SKU", 8)}${pad("мс", 7)}`,
   );
@@ -273,10 +282,15 @@ const selected = args.cases
   : gold.cases;
 if (!selected.length) throw new Error(`жоден кейс не підійшов під --case ${args.cases?.join(",")}`);
 
-const calls = selected.reduce((acc, c) => acc + (1 + c.lines.length), 0) * args.repeats;
+// З Jev чат-модель кличеться лише на витяг: рядки їдуть одним запитом до System One.
+const calls = args.judge
+  ? selected.length * args.repeats
+  : selected.reduce((acc, c) => acc + (1 + c.lines.length), 0) * args.repeats;
 console.error(`  прогонів ${selected.length * args.repeats}, викликів моделі близько ${calls}\n`);
 
 const model = await createModel({ model: args.model });
+const judge = args.judge ? await createJudge() : null;
+if (args.judge && !judge) throw new Error("--judge, але в середовищі немає TYPESAFE_API_KEY");
 const summaries = [];
 const raw = [];
 
@@ -284,7 +298,7 @@ for (const c of selected) {
   const { raw: file } = await intake(path.join(INBOX, c.fixture));
   const runs = [];
   for (let i = 0; i < args.repeats; i++) {
-    const result = await runOnce({ model, text: file.text, skus, gold: c });
+    const result = await runOnce({ model, judge, text: file.text, skus, gold: c });
     runs.push(result);
     process.stderr.write(result.ok ? (result.attempts > 1 ? "r" : ".") : "x");
   }
@@ -294,5 +308,12 @@ for (const c of selected) {
 }
 
 report(summaries, args);
-writeFileSync(OUT, JSON.stringify({ model: args.model, repeats: args.repeats, summaries, raw }, null, 2));
+writeFileSync(
+  OUT,
+  JSON.stringify(
+    { model: args.model, matcher: args.judge ? "jev" : "llm", repeats: args.repeats, summaries, raw },
+    null,
+    2,
+  ),
+);
 console.error(`  повний дамп: ${OUT}\n`);

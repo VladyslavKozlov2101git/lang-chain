@@ -4,12 +4,13 @@
 
 ## Граф
 
-LangGraph 1.5.1, `StateGraph`. Сім вузлів; LLM працює у трьох.
+LangGraph 1.5.1, `StateGraph`. Сім вузлів; модель працює у трьох. У `match` це
+System One (Jev), коли є ключ, інакше чат-модель — контракт у них однаковий.
 
 ```
 START → dedupe → extract ⟲ → match → validate ─┬ чисто ────→ commit ─┬→ END
-           │       (ретрай ребром,              │                     └→ explain → END
-           └→ END   макс 2 спроби)              └ блокуючі → review ⏸ ┤
+           │       (ретрай ребром,    (аляс →   │                     └→ explain → END
+           └→ END   макс 2 спроби)     Jev)     └ блокуючі → review ⏸ ┤
        (тред уже                                                      └→ explain → END
         закритий)
 ```
@@ -18,7 +19,7 @@ START → dedupe → extract ⟲ → match → validate ─┬ чисто ──
 |---|---|---|
 | `dedupe` | — | тред уже закритий? тоді END, не витрачаючи ні LLM, ні мережі |
 | `extract` | ✅ | текст → JSON за zod-схемою; помилка схеми повертає ребро на себе |
-| `match` | ✅ | аляс або шортліст top-5 → вибір SKU + confidence |
+| `match` | ✅ | аляс → Jev: Choice по всьому каталогу + Noul на наявність; без ключа — шортліст top-5 і чат-модель |
 | `validate` | — | R1–R10 → `issues[]` |
 | `review` | — | `interrupt()`, чекає рішення людини |
 | `commit` | — | транзакція: `receipt` + `receipt_line` + аляси |

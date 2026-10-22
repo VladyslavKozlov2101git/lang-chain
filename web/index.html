@@ -250,7 +250,7 @@ function renderChain(result) {
   const stages = [
     ["інтейк", `${result.threadId ? short(result.threadId) + "…" : "—"}`],
     ["витяг", result.doc ? `${result.doc.docNumber} · ${result.doc.lines.length} ряд. · спроба ${result.attempt ?? 1}` : `${byKind("extract").length} виклик(и)`],
-    ["матчинг", matched.length ? `${via("alias")} alias · ${via("llm")} llm · ${via("none")} без збігу` : "—"],
+    ["матчинг", matched.length ? ["alias", "jev", "llm", "none"].filter(via).map((v) => `${via(v)} ${v === "none" ? "без збігу" : v}`).join(" · ") : "—"],
     ["валідація", issues?.length ? `${issues.length} розбіжн. · ${blocking} блокуючих` : "0 розбіжностей"],
     ["фінал", result.paused ? "пауза, чекає людину" : (STATUS[result.status]?.[0] ?? result.status ?? "—")],
   ];

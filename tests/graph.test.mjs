@@ -10,6 +10,7 @@ import {
   resume,
   run,
   Scripted,
+  ScriptedJudge,
   setup,
   TODAY,
 } from "./helpers.mjs";
@@ -405,5 +406,64 @@ describe("AC-31 — примітки постачальника доїжджаю
     const prompt = model.prompts.at(-1);
     expect(prompt).toContain("на пробу, ціна протокольна");
     expect(prompt).toContain("ціну погоджують протоколом");
+  });
+});
+
+describe("T16 — зіставлення через System One", () => {
+  test("усі рядки одним запитом, чат-модель у матчингу не кликана", async () => {
+    const { db } = await setup();
+    // Одна відповідь на весь прогін — лише extract. Якщо матчинг покличе
+    // чат-модель, Scripted упаде на другому виклику, і тест це покаже.
+    const model = new Scripted([docReply()]);
+    const judge = new ScriptedJudge(LINES.map((l) => l[3]));
+
+    const out = await run(graphOver(db, model, (r) => judge.judge(r)), "t-jev");
+
+    expect(out.status).toBe("posted");
+    expect(model.prompts).toHaveLength(1);
+    expect(judge.requests).toHaveLength(1);
+    expect(judge.requests[0].state.lines).toHaveLength(LINES.length);
+    expect(out.matched.every((m) => m.via === "jev")).toBe(true);
+    expect(receiptOf(db, "t-jev").status).toBe("posted");
+  });
+
+  test("низький exists блокує рядок — той самий R8, але з осмисленим числом", async () => {
+    const { db } = await setup();
+    const model = new Scripted([docReply()]);
+    // Вибір упевнений, наявність — ні: випадок «Чеддер → Гауда», заміряний на
+    // живому Jev (Choice 84–100%, exists 8–13%).
+    const judge = new ScriptedJudge(
+      LINES.map((l) => (l[3] === "MLK-006" ? [l[3], 0.11] : l[3])),
+    );
+
+    const out = await run(graphOver(db, model, (r) => judge.judge(r)), "t-jev-low");
+
+    expect(interruptOf(out)).not.toBeNull();
+    expect(out.issues.some((i) => i.code === "no_sku_match" && i.blocking)).toBe(true);
+    expect(pendingReviews(db)).toHaveLength(1);
+  });
+
+  test("аляси вчаться і з рішення над збігом від Jev, не лише від чат-моделі", async () => {
+    const { db } = await setup();
+    const model = new Scripted([docReply(overPriced()), "текст акта"]);
+    const judge = new ScriptedJudge(LINES.map((l) => l[3]));
+    const graph = graphOver(db, model, (r) => judge.judge(r));
+
+    await run(graph, "t-jev-alias");
+    await resume(graph, "t-jev-alias", { action: "approve" });
+
+    // Було `via === "llm"`, і на цьому шляху аляси не народжувались узагалі.
+    expect(db.prepare("SELECT count(*) n FROM sku_alias").get().n).toBe(LINES.length);
+  });
+
+  test("без judge граф лишається на чат-моделі", async () => {
+    const { db } = await setup();
+    const model = new Scripted([docReply(), ...picks()]);
+
+    const out = await run(graphOver(db, model), "t-no-jev");
+
+    expect(out.status).toBe("posted");
+    expect(out.matched.every((m) => m.via === "llm")).toBe(true);
+    expect(model.prompts).toHaveLength(1 + LINES.length);
   });
 });

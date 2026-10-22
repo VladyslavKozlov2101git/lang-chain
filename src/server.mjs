@@ -23,8 +23,9 @@ import {
 import { reasonText } from "./explain.mjs";
 import { buildGraph } from "./graph.mjs";
 import { intake } from "./intake.mjs";
+import { createJudge } from "./judge.mjs";
 import { createModel } from "./llm.mjs";
-import { callKind, withTrace } from "./trace.mjs";
+import { withTrace } from "./trace.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const INBOX = path.resolve(HERE, "..", "fixtures", "inbox");
@@ -36,6 +37,7 @@ const PAGES = {
   "/": "index.html",
   "/index.html": "index.html",
   "/shlyah": "shlyah.html",
+  "/shema": "shema.html",
 };
 
 const listInbox = async () => (await readdir(INBOX)).filter((f) => /\.(txt|xlsx)$/i.test(f)).sort();
@@ -67,15 +69,25 @@ const outcomeOf = (db, threadId, state) => ({
   attempt: state.attempt ?? null,
 });
 
-const traceOf = (calls) =>
-  calls.map((call, i) => ({ i, kind: callKind(call.prompt), ...call }));
+const traceOf = (calls) => calls.map((call, i) => ({ i, ...call }));
 
-export function createServer({ db, makeModel = createModel, today } = {}) {
+export function createServer({ db, makeModel = createModel, makeJudge = createJudge, today } = {}) {
   let cached = null;
+  // Перевірка на undefined, а не `??=`: null — валідний результат (ключа немає),
+  // і повторювати спробу на кожен запит нема сенсу.
+  let cachedJudge;
   const model = async () => (cached ??= await makeModel());
+  const judge = async () =>
+    (cachedJudge === undefined ? (cachedJudge = await makeJudge()) : cachedJudge);
 
-  const graphWith = async (trace) =>
-    buildGraph({ model: trace.model, db, today, checkpointer: checkpointerFor(db) });
+  const graphWith = (trace) =>
+    buildGraph({
+      model: trace.model,
+      judge: trace.judge,
+      db,
+      today,
+      checkpointer: checkpointerFor(db),
+    });
 
   const api = {
     "GET /api/inbox": async () => {
@@ -126,8 +138,8 @@ export function createServer({ db, makeModel = createModel, today } = {}) {
     "POST /api/intake": async ({ body }) => {
       const file = await resolveFixture(body.file);
       const { threadId, source, raw } = await intake(file);
-      const trace = withTrace(await model());
-      const graph = await graphWith(trace);
+      const trace = withTrace(await model(), await judge());
+      const graph = graphWith(trace);
       try {
         const state = await graph.invoke(
           { threadId, source, raw },
@@ -154,8 +166,8 @@ export function createServer({ db, makeModel = createModel, today } = {}) {
             ? { action: body.action }
             : null;
 
-      const trace = withTrace(await model());
-      const graph = await graphWith(trace);
+      const trace = withTrace(await model(), await judge());
+      const graph = graphWith(trace);
       const config = { configurable: { thread_id: threadId } };
       const before = await graph.getState(config);
       if (!before.createdAt) throw Object.assign(new Error("треда немає"), { status: 404 });
@@ -166,7 +178,7 @@ export function createServer({ db, makeModel = createModel, today } = {}) {
 
     "GET /api/thread": async ({ query }) => {
       const threadId = query.get("id");
-      const graph = await graphWith({ model: null });
+      const graph = graphWith({ model: null, judge: null });
       const state = await graph.getState({ configurable: { thread_id: threadId } });
       if (!state.createdAt) throw Object.assign(new Error("треда немає"), { status: 404 });
       return {

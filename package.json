@@ -10,7 +10,6 @@
     "fixtures": "node fixtures/make-xlsx.mjs",
     "eval": "node eval/run.mjs",
     "web": "node supply.mjs web",
-    "web": "node supply.mjs web",
     "intake": "node supply.mjs intake",
     "resume": "node supply.mjs resume",
     "review": "node supply.mjs review"
@@ -31,6 +30,7 @@
     "@langchain/langgraph": "^1.5.1",
     "@langchain/langgraph-checkpoint-sqlite": "^1.1.0",
     "@langchain/openai": "^1.6.3",
+    "@typesafe-ai/sdk": "^0.7.0",
     "exceljs": "^4.4.0",
     "zod": "^4.1.13"
   },

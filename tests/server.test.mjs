@@ -1,11 +1,17 @@
 import { openDb, receiptOf, seedDb } from "../src/db.mjs";
 import { createServer } from "../src/server.mjs";
-import { docReply, overPriced, picks, Scripted, TODAY } from "./helpers.mjs";
+import { docReply, LINES, overPriced, picks, Scripted, ScriptedJudge, TODAY } from "./helpers.mjs";
 
 let open = [];
 
-const listen = async ({ model, db }) => {
-  const server = createServer({ db, today: TODAY, makeModel: async () => model });
+const listen = async ({ model, db, judge = null }) => {
+  // judge за замовчуванням null — тести офлайн, зіставлення йде через Scripted-модель.
+  const server = createServer({
+    db,
+    today: TODAY,
+    makeModel: async () => model,
+    makeJudge: async () => judge,
+  });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   open.push(server);
   const { port } = server.address();
@@ -129,6 +135,20 @@ describe("прогін і рішення", () => {
     expect(body.trace.map((c) => c.kind)).toEqual(["extract", "match", "match", "match", "match"]);
     expect(body.trace[0].prompt).toContain("Накладна № РН-5512");
     expect(body.trace[0].reply).toContain("РН-5512");
+  });
+
+  test("зіставлення через Jev видно в трасуванні: запит і відповідь як JSON", async () => {
+    const db = seeded();
+    const judge = new ScriptedJudge(LINES.map((l) => l[3]));
+    const base = await listen({ db, model: new Scripted([docReply()]), judge: (r) => judge.judge(r) });
+    const { body } = await post(base, "/api/intake", { file: "clean-01-molochka.txt" });
+
+    expect(body.status).toBe("posted");
+    expect(body.trace.map((c) => c.kind)).toEqual(["extract", "match · jev"]);
+    const jev = body.trace[1];
+    expect(JSON.parse(jev.prompt).state.lines).toHaveLength(LINES.length);
+    expect(JSON.parse(jev.reply).answers.sku_0.choice).toBe(LINES[0][3]);
+    expect(jev.ms).toBeGreaterThanOrEqual(0);
   });
 
   test("розбіжність повертає паузу з рядками й розбіжностями", async () => {

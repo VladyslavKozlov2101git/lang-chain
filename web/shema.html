@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Самостійна сторінка: скелет тут пишеться руками, без doctype браузер іде в quirks mode. -->
+<title>Схема графа</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+  /* Ті самі змінні, що на /shlyah: дві сторінки мусять виглядати однією роботою. */
+  :root {
+    --paper: #eef1f4;
+    --card: #fafbfc;
+    --ink: #161b20;
+    --dim: #5d6a76;
+    --rule: #cfd7de;
+    --stamp: #1f4e79;
+    --warn: #a3312a;
+    --ok: #2d6a4f;
+    --flat: #e4e9ee;
+
+    --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+    --body: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+    --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #12161a; --card: #1a1f25; --ink: #e6ebf0; --dim: #94a3b1;
+      --rule: #2c343c; --stamp: #7cb0dd; --warn: #e2857c; --ok: #7cc39c;
+      --flat: #222930; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #12161a; --card: #1a1f25; --ink: #e6ebf0; --dim: #94a3b1;
+    --rule: #2c343c; --stamp: #7cb0dd; --warn: #e2857c; --ok: #7cc39c;
+    --flat: #222930; color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.55;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 28px 16px 60px; }
+
+  header { border-bottom: 2px solid var(--rule); padding-bottom: 14px; margin-bottom: 20px; }
+  h1 {
+    font-family: var(--display); font-weight: 700; font-size: clamp(26px, 5vw, 38px);
+    margin: 0 0 6px; letter-spacing: -0.01em;
+  }
+  .sub { color: var(--dim); margin: 0; }
+  nav { font-family: var(--display); font-size: 14px; margin-top: 12px; display: flex; gap: 16px; }
+  nav a { color: var(--stamp); text-decoration: none; border-bottom: 1px solid transparent; }
+  nav a:hover, nav a:focus-visible { border-bottom-color: var(--stamp); }
+
+  h2 {
+    font-family: var(--display); font-weight: 600; font-size: 19px;
+    margin: 30px 0 10px; letter-spacing: -0.01em;
+  }
+  p { margin: 0 0 12px; }
+  .code {
+    font-family: var(--mono); font-size: 0.88em; background: var(--flat);
+    padding: 1px 5px; border-radius: 3px;
+  }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 8px 20px; font-family: var(--display);
+    font-size: 13.5px; color: var(--dim); margin: 0 0 6px; padding: 0; list-style: none;
+  }
+  .legend li { display: flex; align-items: center; gap: 7px; }
+  .legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+  .hint {
+    font-family: var(--display); font-size: 13px; color: var(--dim);
+    margin: 0 0 4px; display: flex; align-items: center; gap: 7px;
+  }
+  .hint::before {
+    content: ""; width: 14px; height: 14px; border-radius: 50%;
+    border: 1.5px dashed var(--dim); flex: none;
+  }
+
+  .board {
+    background: var(--card); border: 1px solid var(--rule); border-radius: 8px;
+    padding: 10px 6px; margin: 0 0 18px;
+  }
+  svg.graph { width: 100%; height: auto; display: block; }
+
+  /* Вузли клікабельні й фокусуються з клавіатури: тултіп має бути доступний не лише мишею. */
+  .node { cursor: help; outline: none; }
+  .node .box { fill: var(--card); stroke: var(--rule); stroke-width: 1.5; transition: stroke .12s; }
+  .node .pill { fill: var(--flat); stroke: var(--rule); stroke-width: 1.5; transition: stroke .12s; }
+  .node.key .box { stroke: var(--stamp); stroke-width: 2.5; }
+  .node:hover .box, .node:hover .pill,
+  .node:focus-visible .box, .node:focus-visible .pill,
+  .node.on .box, .node.on .pill { stroke: var(--stamp); stroke-width: 2.5; }
+  .nm { fill: var(--ink); font-family: var(--mono); font-size: 14px; font-weight: 500; }
+  .sb { fill: var(--dim); font-family: var(--display); font-size: 11px; }
+  .ed { stroke: var(--rule); stroke-width: 1.5; fill: none; }
+  .ed.soft { stroke-dasharray: 4 4; }
+  .el { fill: var(--dim); font-family: var(--display); font-size: 11.5px; }
+
+  #tip {
+    position: fixed; z-index: 10; max-width: 340px;
+    background: var(--card); color: var(--ink);
+    border: 1px solid var(--rule); border-left: 3px solid var(--stamp);
+    border-radius: 6px; padding: 11px 13px;
+    font-family: var(--display); font-size: 13.5px; line-height: 1.5;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+    pointer-events: none;
+  }
+  #tip[hidden] { display: none; }
+  #tip b { font-weight: 700; }
+  #tip .t { font-family: var(--mono); font-size: 13px; color: var(--stamp); display: block; margin-bottom: 4px; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-family: var(--display); font-weight: 600; color: var(--dim); font-size: 13px; }
+  td:first-child { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+
+  @media (max-width: 560px) {
+    #tip { max-width: calc(100vw - 32px); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Схема графа</h1>
+    <p class="sub">Приймання поставки від постачальника: сім вузлів, два з них чекають на людину або на модель.</p>
+    <nav>
+      <a href="/shlyah">← Покроковий розбір</a>
+      <a href="/">Робочий стіл</a>
+    </nav>
+  </header>
+
+  <ul class="legend">
+    <li><i style="background:var(--dim)"></i>без моделі, чистий код</li>
+    <li><i style="background:var(--stamp)"></i>чат-модель</li>
+    <li><i style="background:var(--ok)"></i>System One (Jev)</li>
+    <li><i style="background:var(--warn)"></i>людина</li>
+  </ul>
+  <p class="hint">Наведи на будь-який блок — що він робить насправді й чому саме так.</p>
+
+  <div class="board">
+  <svg class="graph" viewBox="0 0 600 700" role="img" aria-label="Блок-схема графа приймання поставки">
+    <defs>
+      <marker id="ar" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L8,4 L0,8 z" fill="var(--rule)"/>
+      </marker>
+    </defs>
+
+    <path class="ed" d="M300,32 V54" marker-end="url(#ar)"/>
+    <path class="ed" d="M300,98 V126" marker-end="url(#ar)"/>
+    <path class="ed" d="M300,170 V198" marker-end="url(#ar)"/>
+    <path class="ed" d="M300,242 V270" marker-end="url(#ar)"/>
+    <path class="ed" d="M200,138 C163,131 163,165 197,158" marker-end="url(#ar)"/>
+    <text class="el" x="156" y="151" text-anchor="end">помилка схеми, до 2 спроб</text>
+    <path class="ed soft" d="M400,76 H560 V614 H338" marker-end="url(#ar)"/>
+    <text class="el" x="556" y="68" text-anchor="end">тред уже закритий</text>
+
+    <path class="ed" d="M300,314 V332 H140 V438" marker-end="url(#ar)"/>
+    <text class="el" x="148" y="350">чисто</text>
+    <path class="ed" d="M300,314 V332 H430 V358" marker-end="url(#ar)"/>
+    <text class="el" x="352" y="350">блокуючі</text>
+
+    <path class="ed" d="M376,402 V418 H230 V438" marker-end="url(#ar)"/>
+    <text class="el" x="244" y="414">схвалені рядки</text>
+    <path class="ed" d="M500,402 V538 H404" marker-end="url(#ar)"/>
+    <text class="el" x="508" y="474">відмова</text>
+    <path class="ed" d="M170,482 V538 H196" marker-end="url(#ar)"/>
+    <text class="el" x="98" y="506">є розбіжності</text>
+    <path class="ed soft" d="M104,482 V652 H300 V626" marker-end="url(#ar)"/>
+    <text class="el" x="112" y="670">акт не потрібен</text>
+    <path class="ed" d="M300,560 V596" marker-end="url(#ar)"/>
+
+    <g class="node" tabindex="0" data-t="START" data-tip="Вхід: файл .txt або .xlsx із теки вхідних. xlsx перетворюється на масив рядків ще до графа, тому далі обидва формати виглядають однаково.<br><br>Разом із текстом усередину їде sha256 вмісту — з нього й робиться ідентифікатор треда.">
+      <rect class="pill" x="258" y="6" width="84" height="26" rx="13"/>
+      <text class="nm" x="300" y="24" text-anchor="middle">START</text>
+    </g>
+
+    <g class="node" tabindex="0" data-t="dedupe" data-tip="<b>Перший рівень ідемпотентності.</b> thread_id — це sha256 вмісту листа, тому той самий файл дає той самий тред. Якщо тред уже закритий, вузол віддає збережений результат і граф іде в END, не витративши ні виклику моделі, ні мережі.<br><br>Перевірка явна, бо сам по собі LangGraph її не дає: завершений тред він проганяє заново з START.<br><br>Другий рівень глибше — UNIQUE(постачальник, номер, дата) на накладній, на випадок коли той самий документ прийшов двома каналами й має різні хеші.">
+      <rect class="box" x="200" y="54" width="200" height="44" rx="6"/>
+      <circle fill="var(--dim)" cx="216" cy="76" r="4.5"/>
+      <text class="nm" x="306" y="73" text-anchor="middle">dedupe</text>
+      <text class="sb" x="306" y="88" text-anchor="middle">sha256 · тред уже закритий?</text>
+    </g>
+
+    <g class="node" tabindex="0" data-t="extract" data-tip="<b>Єдиний вузол, де модель бачить вільну форму.</b> Промпт, zod-схема і ретрай ребром: максимум дві спроби, текст помилки їде моделі наступною спробою.<br><br>Чому не withStructuredOutput() — він просить у провайдера function-calling або json_schema, а шлюз цього може не тримати, і зʼясувалося б це на першому ж реальному листі.<br><br>Ціни модель переписує рядком «як у документі» й нічого не рахує: у копійки їх переводить код. Арифметика грошей — не робота моделі.">
+      <rect class="box" x="200" y="126" width="200" height="44" rx="6"/>
+      <circle fill="var(--stamp)" cx="216" cy="148" r="4.5"/>
+      <text class="nm" x="306" y="145" text-anchor="middle">extract</text>
+      <text class="sb" x="306" y="160" text-anchor="middle">текст у JSON за схемою</text>
+    </g>
+
+    <g class="node key" tabindex="0" data-t="match" data-tip="<b>Те, що змінилось останнім.</b> Спершу аляси: підтверджений людиною збіг більше не йде ні в модель, ні до людини — саме це робить систему дешевшою з кожним листом.<br><br>Решта рядків — <b>одним запитом</b> у System One: Choice по всьому каталогу (255 опцій, шортліст не потрібен) плюс Noul «чи є такий товар узагалі». У ворота R8 йде саме Noul, а не впевненість вибору — і це головне.<br><br>Чому: на «Сир твердий Чеддер 50%» при каталозі, де є лише Гауда, вибір упевнено віддає Гауду з 84–100%, а Noul каже 8–13%.<br><br>290 мс на документ проти 10 338 мс. Без ключа працює старий шлях: шортліст top-5 і чат-модель.">
+      <rect class="box" x="200" y="198" width="200" height="44" rx="6"/>
+      <circle fill="var(--ok)" cx="214" cy="214" r="4.5"/>
+      <circle fill="var(--stamp)" cx="214" cy="227" r="4.5"/>
+      <text class="nm" x="308" y="217" text-anchor="middle">match</text>
+      <text class="sb" x="308" y="232" text-anchor="middle">аляс, далі Jev · 290 мс</text>
+    </g>
+
+    <g class="node" tabindex="0" data-t="validate" data-tip="<b>Тут рахуються гроші, тому моделі немає за визначенням.</b> Чиста функція: ні БД, ні мережі, ні «сьогодні» всередині — усе приходить аргументами, тому правила перевіряються тестами без мережі.<br><br>R1 ціна проти протоколу · R3 чинність протоколу · R4 кратність пакування · R5/R6 кількість проти заявки · R7 залишковий термін · R8 збіг SKU · R9 нав'язаний товар · R10 сума документа.<br><br>Усі гроші всередині — цілі копійки: 0.1 + 0.2 !== 0.3 при нульовому допуску означав би відмову на копійку з повітря. Порівняння завжди без ПДВ, і протокол переводиться в простір документа, а не навпаки.">
+      <rect class="box" x="200" y="270" width="200" height="44" rx="6"/>
+      <circle fill="var(--dim)" cx="216" cy="292" r="4.5"/>
+      <text class="nm" x="306" y="289" text-anchor="middle">validate</text>
+      <text class="sb" x="306" y="304" text-anchor="middle">R1–R10 · нуль моделі</text>
+    </g>
+
+    <g class="node" tabindex="0" data-t="review" data-tip="<b>Справжня пауза, а не очікування в памʼяті.</b> interrupt() зберігає стан на диск; рішення приходить іншою командою в іншому процесі, можливо через годину.<br><br>Людині їде не лише список розбіжностей, а й примітка постачальника. Без неї «позиції немає в заявці» читається як помилка там, де товар привезли на пробу й прямо про це написали.<br><br>Рішень три: прийняти, відмовити, прийняти частково — галочками по рядках. Примітка пояснює, але не погоджує: ціну погоджують протоколом, а не листом.">
+      <rect class="box" x="330" y="358" width="200" height="44" rx="6"/>
+      <circle fill="var(--warn)" cx="346" cy="380" r="4.5"/>
+      <text class="nm" x="436" y="377" text-anchor="middle">review ⏸</text>
+      <text class="sb" x="436" y="392" text-anchor="middle">interrupt() · стан на диску</text>
+    </g>
+
+    <g class="node" tabindex="0" data-t="commit" data-tip="<b>Одна транзакція:</b> накладна, її рядки й нові аляси.<br><br>Аляс народжується тільки з рішення людини — аляс із рішення моделі закріпив би галюцинацію назавжди. Вчимось і на рядках, які відкинули через ціну чи термін: зіставлення в них людина не заперечила.<br><br>Не вчимось на двох випадках: no_sku_match, де під питанням сам збіг, і рядок, виключений без жодної розбіжності — там причина невідома, і це міг бути якраз неправильний SKU.<br><br>Конфлікт UNIQUE означає, що документ уже проводили: другої накладної не буде.">
+      <rect class="box" x="70" y="438" width="200" height="44" rx="6"/>
+      <circle fill="var(--dim)" cx="86" cy="460" r="4.5"/>
+      <text class="nm" x="176" y="457" text-anchor="middle">commit</text>
+      <text class="sb" x="176" y="472" text-anchor="middle">накладна і аляси</text>
+    </g>
+
+    <g class="node" tabindex="0" data-t="explain" data-tip="<b>Найменший ризик для моделі:</b> всі цифри вже порахував код, лишається скласти з них лист.<br><br>Якщо модель недоступна — віддається детермінована таблиця. Накладна на цей момент уже проведена, і втрачати її через збій генератора тексту було б смішно.<br><br>Суми завжди підписані, і їх дві: сума за документом (буває з ПДВ) і прийнята сума (завжди без). Саме через їх плутанину постачальник колись читав у листі суму, якої ніхто не приймав.">
+      <rect class="box" x="200" y="516" width="200" height="44" rx="6"/>
+      <circle fill="var(--stamp)" cx="216" cy="538" r="4.5"/>
+      <text class="nm" x="306" y="535" text-anchor="middle">explain</text>
+      <text class="sb" x="306" y="550" text-anchor="middle">акт розбіжностей</text>
+    </g>
+
+    <g class="node" tabindex="0" data-t="END" data-tip="Вихід. Тред закривається й у черзі рішень більше не зʼявляється.<br><br>Повторний інтейк того самого листа дійде тільки до dedupe: другого проведення не буде, і модель не покличуть.">
+      <rect class="pill" x="266" y="600" width="68" height="26" rx="13"/>
+      <text class="nm" x="300" y="618" text-anchor="middle">END</text>
+    </g>
+  </svg>
+  </div>
+
+  <div id="tip" hidden></div>
+
+  <h2>Ребра, які варто прочитати окремо</h2>
+  <table>
+    <thead><tr><th>Ребро</th><th>Коли спрацьовує</th></tr></thead>
+    <tbody>
+      <tr><td>extract ⟲ extract</td><td>Відповідь не лягла в zod-схему. Текст помилки їде моделі наступною спробою, і кожна спроба лягає в чекпойнт окремо — падіння шлюзу на другій не губить першу. Після двох спроб рядок іде до людини з причиною <span class="code">extract_failed</span>.</td></tr>
+      <tr><td>dedupe ⇢ END</td><td>Пунктир: тред із таким хешем уже закритий. Найдешевший шлях у графі — ні моделі, ні мережі.</td></tr>
+      <tr><td>validate → commit</td><td>Блокуючих розбіжностей немає. Документ проводиться без людини взагалі.</td></tr>
+      <tr><td>validate → review</td><td>Є хоч одна блокуюча розбіжність із R1–R10. Граф спиняється й чекає рішення.</td></tr>
+      <tr><td>review → commit</td><td>Прийнято повністю або частково: накладна виписується на схвалені рядки, решта йде в акт.</td></tr>
+      <tr><td>review → explain</td><td>Відмова — або немає відомого магазину чи постачальника, бо тоді приймати фізично нікуди й ні від кого.</td></tr>
+      <tr><td>commit ⇢ END</td><td>Пунктир: розбіжностей не було жодних, тому й акт писати нема про що.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Що в цій схемі змінилось</h2>
+  <p>Форма графа не мінялась відтоді, як він поїхав end-to-end. Мінявся лише
+    <span class="code">match</span> — єдиний вузол із двома крапками: через System One, коли є
+    ключ, і через чат-модель, коли ключа немає. Контракт у двох реалізацій однаковий, тому
+    решта схеми про цей вибір не знає, а <span class="code">validate</span> не змінився
+    жодним рядком.</p>
+  <p>Цифри заміру й те, чого вони не доводять, — на сторінці
+    <a href="/shlyah">покрокового розбору</a>.</p>
+
+</div>
+
+<script>
+// Тултіпи: наведення мишею, фокус із клавіатури й тап на сенсорному екрані.
+const tip = document.getElementById("tip");
+const nodes = [...document.querySelectorAll(".node")];
+let pinned = null;
+
+const render = (el) => {
+  tip.innerHTML = '<span class="t">' + el.dataset.t + "</span>" + el.dataset.tip;
+  tip.hidden = false;
+};
+
+/** Тримаємо тултіп у вікні: біля курсора, але не за краєм. */
+const place = (x, y) => {
+  const pad = 12;
+  const r = tip.getBoundingClientRect();
+  let left = x + 16;
+  let top = y + 16;
+  if (left + r.width > innerWidth - pad) left = Math.max(pad, x - r.width - 16);
+  if (top + r.height > innerHeight - pad) top = Math.max(pad, y - r.height - 16);
+  tip.style.left = left + "px";
+  tip.style.top = top + "px";
+};
+
+const placeAt = (el) => {
+  const b = el.getBoundingClientRect();
+  place(b.right - 8, b.bottom - 8);
+};
+
+const hide = () => {
+  tip.hidden = true;
+  if (pinned) pinned.classList.remove("on");
+  pinned = null;
+};
+
+for (const el of nodes) {
+  el.addEventListener("mouseenter", (e) => { render(el); place(e.clientX, e.clientY); });
+  el.addEventListener("mousemove", (e) => { if (!tip.hidden) place(e.clientX, e.clientY); });
+  el.addEventListener("mouseleave", () => { if (!pinned) tip.hidden = true; });
+
+  el.addEventListener("focus", () => { render(el); placeAt(el); });
+  el.addEventListener("blur", hide);
+
+  // Тап: перший відкриває й закріплює, другий по тому самому — закриває.
+  el.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (pinned === el) return hide();
+    if (pinned) pinned.classList.remove("on");
+    pinned = el;
+    el.classList.add("on");
+    render(el);
+    placeAt(el);
+  });
+}
+
+addEventListener("click", hide);
+addEventListener("keydown", (e) => { if (e.key === "Escape") { hide(); document.activeElement?.blur(); } });
+addEventListener("scroll", () => { if (pinned) placeAt(pinned); }, { passive: true });
+</script>
+</body>
+</html>

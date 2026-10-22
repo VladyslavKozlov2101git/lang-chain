@@ -164,10 +164,14 @@ describe("R7 — залишковий термін", () => {
 });
 
 describe("R8 — матчинг", () => {
-  test("AC-7: впевненість нижче 0.8 → no_sku_match", () => {
-    const issues = run(doc(), [{ lineIdx: 0, skuId: 1, confidence: 0.7, via: "llm" }]);
+  test("AC-7: впевненість нижче порогу → no_sku_match", () => {
+    const issues = run(doc(), [{ lineIdx: 0, skuId: 1, confidence: 0.6, via: "jev" }]);
     expect(codes(issues)).toEqual(["no_sku_match"]);
-    expect(issues[0].detail).toContain("0.7");
+    expect(issues[0].detail).toContain("0.6");
+  });
+
+  test("AC-7: 0.76 — найнижчий правильний exists із заміру T16 — проходить без ескалації", () => {
+    expect(run(doc(), [{ lineIdx: 0, skuId: 1, confidence: 0.76, via: "jev" }])).toEqual([]);
   });
 
   test("AC-7: рядок без збігу → no_sku_match і решта правил по ньому не йде", () => {

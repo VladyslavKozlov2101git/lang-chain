@@ -18,10 +18,11 @@ import {
 import { reasonText } from "./explain.mjs";
 import { buildGraph } from "./graph.mjs";
 import { intake } from "./intake.mjs";
+import { createJudge } from "./judge.mjs";
 import { createModel } from "./llm.mjs";
 import { startServer } from "./server.mjs";
 import { formatUah } from "./text.mjs";
-import { callKind, withTrace } from "./trace.mjs";
+import { withTrace } from "./trace.mjs";
 
 const USAGE = `supply-flow — приймання поставки від постачальника
 
@@ -154,7 +155,8 @@ function printOutcome(db, threadId, state, log) {
 }
 
 export async function main(argv = process.argv.slice(2), deps = {}) {
-  const { makeModel = createModel, dbFile = DB_PATH, log = console.log, today } = deps;
+  const { makeModel = createModel, makeJudge = createJudge, dbFile = DB_PATH,
+          log = console.log, today } = deps;
   const args = parseArgs(argv);
   const [command, target] = args._;
 
@@ -172,13 +174,15 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
 
   const db = openDb(dbFile);
 
-  // --trace підмінює модель обгорткою: вузли кличуть у неї тільки .invoke, тому
-  // трасування нічого не знає про їхній код і нічого в ньому не псує.
+  // --trace підмінює модель і суддю обгортками: вузли кличуть у моделі тільки
+  // .invoke, а в судді — одну функцію, тому трасування нічого не знає про їхній
+  // код і нічого в ньому не псує.
   const graphWith = async () => {
-    const traced = args.trace ? withTrace(await makeModel()) : null;
+    const traced = args.trace ? withTrace(await makeModel(), await makeJudge()) : null;
     return {
       graph: buildGraph({
         model: traced ? traced.model : await makeModel(),
+        judge: traced ? traced.judge : await makeJudge(),
         db,
         today,
         checkpointer: checkpointerFor(db),
@@ -190,7 +194,7 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
   const printTrace = (traced) => {
     if (!traced) return;
     for (const [i, call] of traced.calls.entries()) {
-      log(`\n  ── ${i + 1}. ${callKind(call.prompt)} · ${call.ms} мс ──`);
+      log(`\n  ── ${i + 1}. ${call.kind} · ${call.ms} мс ──`);
       log(`\n  запит:\n${call.prompt}`);
       log(`\n  відповідь:\n${call.error ? `ПОМИЛКА: ${call.error}` : call.reply}\n`);
     }
